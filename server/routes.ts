@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import session from "express-session";
 import { storage } from "./storage";
+import { resetAndReseed } from "./seed";
 import {
   insertFournisseurSchema,
   insertCategorieSchema,
@@ -75,6 +76,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     req.session.destroy(() => {
       res.json({ success: true });
     });
+  });
+
+  // Admin: Reset and reseed database
+  app.post("/api/admin/reseed", requireAuth, async (req, res) => {
+    try {
+      console.log("🔄 Admin triggered database reseed...");
+      await resetAndReseed();
+      res.json({ success: true, message: "Base de données réinitialisée avec succès" });
+    } catch (error) {
+      console.error("Error reseeding database:", error);
+      res.status(500).json({ error: "Erreur lors de la réinitialisation" });
+    }
   });
 
   // Dashboard

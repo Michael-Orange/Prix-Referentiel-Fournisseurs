@@ -93,6 +93,17 @@ export default function Produits() {
     actif: true,
   });
 
+  const [addPriceWithProduct, setAddPriceWithProduct] = useState(false);
+  const [productPriceForm, setProductPriceForm] = useState({
+    fournisseurId: 0,
+    prixHT: 0,
+    tauxTVA: 18,
+    prixTTC: 0,
+    dateDebutValidite: new Date().toISOString().split("T")[0],
+    remarques: "",
+  });
+  const [productPriceInputMode, setProductPriceInputMode] = useState<"HT" | "TTC">("HT");
+
   const [priceForm, setPriceForm] = useState({
     fournisseurId: 0,
     prixHT: 0,
@@ -223,6 +234,16 @@ export default function Produits() {
       uniteMesure: product?.uniteMesure || "u",
       actif: product?.actif ?? true,
     });
+    setAddPriceWithProduct(false);
+    setProductPriceForm({
+      fournisseurId: 0,
+      prixHT: 0,
+      tauxTVA: 18,
+      prixTTC: 0,
+      dateDebutValidite: new Date().toISOString().split("T")[0],
+      remarques: "",
+    });
+    setProductPriceInputMode("HT");
     setIsProductDialogOpen(true);
   };
 
@@ -236,6 +257,46 @@ export default function Produits() {
       sousSectionId: null,
       uniteMesure: "u",
       actif: true,
+    });
+    setAddPriceWithProduct(false);
+  };
+
+  const handleProductPriceFournisseurChange = (fournisseurId: string) => {
+    const id = parseInt(fournisseurId);
+    const fournisseur = fournisseurs.find((f) => f.id === id);
+    const tauxTVA = fournisseur?.tvaApplicable ? 18 : 0;
+    setProductPriceForm({
+      ...productPriceForm,
+      fournisseurId: id,
+      tauxTVA,
+      prixTTC: productPriceInputMode === "HT" ? calculateTTC(productPriceForm.prixHT, tauxTVA) : productPriceForm.prixTTC,
+      prixHT: productPriceInputMode === "TTC" ? calculateHT(productPriceForm.prixTTC, tauxTVA) : productPriceForm.prixHT,
+    });
+  };
+
+  const handleProductPrixHTChange = (value: number) => {
+    setProductPriceForm({
+      ...productPriceForm,
+      prixHT: value,
+      prixTTC: calculateTTC(value, productPriceForm.tauxTVA),
+    });
+  };
+
+  const handleProductPrixTTCChange = (value: number) => {
+    setProductPriceForm({
+      ...productPriceForm,
+      prixTTC: value,
+      prixHT: calculateHT(value, productPriceForm.tauxTVA),
+    });
+  };
+
+  const handleProductTauxTVAChange = (value: number) => {
+    const newTTC = calculateTTC(productPriceForm.prixHT, value);
+    setProductPriceForm({
+      ...productPriceForm,
+      tauxTVA: value,
+      prixTTC: productPriceInputMode === "HT" ? newTTC : productPriceForm.prixTTC,
+      prixHT: productPriceInputMode === "TTC" ? calculateHT(productPriceForm.prixTTC, value) : productPriceForm.prixHT,
     });
   };
 
@@ -315,14 +376,59 @@ export default function Produits() {
     });
   };
 
-  const handleProductSubmit = (e: React.FormEvent) => {
+  const handleProductSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!productForm.nom.trim() || !productForm.categorieId || !productForm.uniteMesure) return;
+
+    if (addPriceWithProduct && !editingProduct) {
+      if (!productPriceForm.fournisseurId || productPriceForm.prixHT <= 0) {
+        toast({
+          title: "Erreur",
+          description: "Veuillez remplir les champs du prix fournisseur",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
 
     if (editingProduct) {
       updateProductMutation.mutate({ id: editingProduct.id, data: productForm });
     } else {
-      createProductMutation.mutate(productForm as InsertProduit);
+      try {
+        const response = await apiRequest("POST", "/api/produits", productForm);
+        const newProduct = await response.json();
+        
+        if (addPriceWithProduct && newProduct.id) {
+          const selectedFournisseur = fournisseurs.find((f) => f.id === productPriceForm.fournisseurId);
+          const expectedTaux = selectedFournisseur?.tvaApplicable ? 18 : 0;
+          const tvaOverride = productPriceForm.tauxTVA !== expectedTaux;
+
+          await apiRequest("POST", "/api/prix", {
+            produitId: newProduct.id,
+            fournisseurId: productPriceForm.fournisseurId,
+            prixHT: productPriceForm.prixHT,
+            tauxTVA: productPriceForm.tauxTVA,
+            prixTTC: productPriceForm.prixTTC,
+            dateDebutValidite: new Date(productPriceForm.dateDebutValidite),
+            remarques: productPriceForm.remarques || null,
+            actif: true,
+            tvaOverride,
+          });
+          
+          toast({
+            title: "Produit créé avec prix",
+            description: `${newProduct.reference} - ${newProduct.nom} créé avec prix ${formatFCFA(productPriceForm.prixHT)} HT`,
+          });
+        } else {
+          toast({ title: "Produit créé", description: "Le produit a été ajouté avec succès" });
+        }
+        
+        queryClient.invalidateQueries({ queryKey: ["/api/produits"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+        closeProductDialog();
+      } catch {
+        toast({ title: "Erreur", description: "Impossible de créer le produit", variant: "destructive" });
+      }
     }
   };
 
@@ -530,7 +636,7 @@ export default function Produits() {
 
       {/* Product Form Dialog */}
       <Dialog open={isProductDialogOpen} onOpenChange={setIsProductDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editingProduct ? "Modifier le produit" : "Nouveau produit"}
@@ -645,6 +751,153 @@ export default function Produits() {
                 data-testid="switch-product-actif"
               />
             </div>
+
+            {!editingProduct && (
+              <div className="border-t border-dashed pt-4 mt-4 space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="add-price-toggle" className="text-sm font-medium">
+                    Ajouter un prix fournisseur maintenant
+                  </Label>
+                  <Switch
+                    id="add-price-toggle"
+                    checked={addPriceWithProduct}
+                    onCheckedChange={setAddPriceWithProduct}
+                    data-testid="switch-add-price"
+                  />
+                </div>
+
+                {addPriceWithProduct && (
+                  <div className="space-y-4 p-4 rounded-md bg-muted/50 border border-dashed">
+                    <div className="space-y-2">
+                      <Label>Fournisseur *</Label>
+                      <Select
+                        value={productPriceForm.fournisseurId ? productPriceForm.fournisseurId.toString() : ""}
+                        onValueChange={handleProductPriceFournisseurChange}
+                      >
+                        <SelectTrigger data-testid="select-product-price-fournisseur">
+                          <SelectValue placeholder="Sélectionner un fournisseur..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {fournisseurs.filter((f) => f.actif).length === 0 ? (
+                            <div className="p-2 text-sm text-muted-foreground text-center">
+                              Aucun fournisseur disponible
+                            </div>
+                          ) : (
+                            fournisseurs
+                              .filter((f) => f.actif)
+                              .map((f) => (
+                                <SelectItem key={f.id} value={f.id.toString()}>
+                                  <div className="flex items-center gap-2">
+                                    {f.nom}
+                                    <TVABadge tvaApplicable={f.tvaApplicable} size="sm" />
+                                  </div>
+                                </SelectItem>
+                              ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="flex gap-2 p-1 rounded-md bg-background">
+                      <Button
+                        type="button"
+                        variant={productPriceInputMode === "HT" ? "default" : "ghost"}
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => setProductPriceInputMode("HT")}
+                      >
+                        Saisie HT
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={productPriceInputMode === "TTC" ? "default" : "ghost"}
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => setProductPriceInputMode("TTC")}
+                      >
+                        Saisie TTC
+                      </Button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="prod-prix-ht">Prix HT (FCFA) *</Label>
+                        <Input
+                          id="prod-prix-ht"
+                          type="number"
+                          value={productPriceForm.prixHT || ""}
+                          onChange={(e) => handleProductPrixHTChange(parseFloat(e.target.value) || 0)}
+                          disabled={productPriceInputMode === "TTC"}
+                          className={productPriceInputMode === "TTC" ? "bg-muted" : ""}
+                          placeholder="Ex: 7000"
+                          data-testid="input-product-prix-ht"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="prod-taux-tva">Taux TVA (%)</Label>
+                        <Input
+                          id="prod-taux-tva"
+                          type="number"
+                          value={productPriceForm.tauxTVA}
+                          onChange={(e) => handleProductTauxTVAChange(parseFloat(e.target.value) || 0)}
+                          data-testid="input-product-taux-tva"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="prod-prix-ttc">Prix TTC (FCFA)</Label>
+                      <Input
+                        id="prod-prix-ttc"
+                        type="number"
+                        value={productPriceForm.prixTTC || ""}
+                        onChange={(e) => handleProductPrixTTCChange(parseFloat(e.target.value) || 0)}
+                        disabled={productPriceInputMode === "HT"}
+                        className={productPriceInputMode === "HT" ? "bg-muted" : ""}
+                        data-testid="input-product-prix-ttc"
+                      />
+                    </div>
+
+                    {productPriceForm.fournisseurId > 0 && (() => {
+                      const selectedFournisseur = fournisseurs.find((f) => f.id === productPriceForm.fournisseurId);
+                      const expectedTaux = selectedFournisseur?.tvaApplicable ? 18 : 0;
+                      if (productPriceForm.tauxTVA !== expectedTaux) {
+                        return (
+                          <div className="flex items-center gap-2 p-3 rounded-md bg-destructive/10 text-destructive text-sm">
+                            <AlertTriangle className="h-4 w-4" />
+                            <span>TVA différente du profil fournisseur</span>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="prod-date-debut">Date début validité</Label>
+                        <Input
+                          id="prod-date-debut"
+                          type="date"
+                          value={productPriceForm.dateDebutValidite}
+                          onChange={(e) => setProductPriceForm({ ...productPriceForm, dateDebutValidite: e.target.value })}
+                          data-testid="input-product-date-debut"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="prod-remarques">Remarques</Label>
+                        <Input
+                          id="prod-remarques"
+                          value={productPriceForm.remarques}
+                          onChange={(e) => setProductPriceForm({ ...productPriceForm, remarques: e.target.value })}
+                          placeholder="Notes..."
+                          data-testid="input-product-remarques"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={closeProductDialog}>
