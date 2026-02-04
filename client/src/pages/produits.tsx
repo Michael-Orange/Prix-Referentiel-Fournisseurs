@@ -403,22 +403,30 @@ export default function Produits() {
           const expectedTaux = selectedFournisseur?.tvaApplicable ? 18 : 0;
           const tvaOverride = productPriceForm.tauxTVA !== expectedTaux;
 
-          await apiRequest("POST", "/api/prix", {
-            produitId: newProduct.id,
-            fournisseurId: productPriceForm.fournisseurId,
-            prixHT: productPriceForm.prixHT,
-            tauxTVA: productPriceForm.tauxTVA,
-            prixTTC: productPriceForm.prixTTC,
-            dateDebutValidite: new Date(productPriceForm.dateDebutValidite),
-            remarques: productPriceForm.remarques || null,
-            actif: true,
-            tvaOverride,
-          });
-          
-          toast({
-            title: "Produit créé avec prix",
-            description: `${newProduct.reference} - ${newProduct.nom} créé avec prix ${formatFCFA(productPriceForm.prixHT)} HT`,
-          });
+          try {
+            await apiRequest("POST", "/api/prix", {
+              produitId: newProduct.id,
+              fournisseurId: productPriceForm.fournisseurId,
+              prixHT: productPriceForm.prixHT,
+              tauxTVA: productPriceForm.tauxTVA,
+              prixTTC: productPriceForm.prixTTC,
+              dateDebutValidite: new Date(productPriceForm.dateDebutValidite),
+              remarques: productPriceForm.remarques || null,
+              actif: true,
+              tvaOverride,
+            });
+            
+            toast({
+              title: "Produit créé avec prix",
+              description: `${newProduct.reference} - ${newProduct.nom} créé avec prix ${formatFCFA(productPriceForm.prixHT)} HT`,
+            });
+          } catch {
+            toast({
+              title: "Produit créé, prix non ajouté",
+              description: `Le produit ${newProduct.reference} a été créé mais le prix n'a pas pu être ajouté. Vous pouvez l'ajouter manuellement.`,
+              variant: "destructive",
+            });
+          }
         } else {
           toast({ title: "Produit créé", description: "Le produit a été ajouté avec succès" });
         }
