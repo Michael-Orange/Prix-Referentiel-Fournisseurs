@@ -1,0 +1,55 @@
+AJOUT IMPORTANT : COULEURS ET STYLE FILTREPLANTE
+Garder le style visuel cohérent avec les autres applications Filtreplante.
+Palette de couleurs (depuis filtreplante.com) :
+:root {
+  --ast-global-color-0: #3AA6B9;  /* Bleu turquoise principal (CTA, accents) */
+  --ast-global-color-1: #2997AA;  /* Bleu turquoise foncé (hover, liens actifs) */
+  --ast-global-color-2: #0F172A;  /* Bleu très foncé (textes titres, menu) */
+  --ast-global-color-3: #454F5E;  /* Gris anthracite (textes body) */
+  --ast-global-color-4: #E9F8F9;  /* Bleu ciel très clair (fond page) */
+  --ast-global-color-5: #FFFFFF;  /* Blanc (fond cartes, header) */
+  --ast-global-color-6: #CAE6E8;  /* Bleu ciel clair (fond alternatif) */
+}
+Application des couleurs :
+Boutons principaux :
+Fond : #3AA6B9 (turquoise)
+Hover : #2997AA (turquoise foncé)
+Texte : blanc
+Boutons secondaires :
+Bordure : #3AA6B9
+Fond transparent
+Texte : #3AA6B9
+Hover : fond #2997AA, texte blanc
+Textes :
+Titres : #0F172A (bleu foncé)
+Body : #454F5E (gris anthracite)
+Liens : #3AA6B9
+Liens hover : #2997AA
+Fonds :
+Page : #E9F8F9 (bleu ciel très clair)
+Cartes/modales : blanc #FFFFFF
+Sections alternées : #CAE6E8 (bleu ciel clair)
+États visuels :
+Badges "TVA 18%" : fond #3AA6B9, texte blanc
+Badges "Sans TVA" : fond #454F5E, texte blanc
+Warnings TVA override : texte #ef4444 (rouge standard), icône warning
+Success : #10b981 (vert standard)
+Danger : #ef4444 (rouge standard)
+Typographie (depuis le site) :
+Titres : Inter, sans-serif (font-weight: 600)
+Body : Roboto, sans-serif (font-weight: 400)
+Taille base : 18px (1.125rem)
+Composants spécifiques :
+Tables :
+Header : fond #CAE6E8, texte #0F172A
+Lignes alternées : blanc / #E9F8F9
+Hover ligne : #CAE6E8
+Forms :
+Focus input : border #3AA6B9
+Label : #0F172A
+Placeholder : #9ca3af (gris clair standard)
+Navigation :
+Fond header : blanc
+Liens : #0F172A
+Liens actifs/hover : #2997AA
+Référence : Suivre l'identité visuelle de filtreplante.com pour cohérence avec les autres apps internes.

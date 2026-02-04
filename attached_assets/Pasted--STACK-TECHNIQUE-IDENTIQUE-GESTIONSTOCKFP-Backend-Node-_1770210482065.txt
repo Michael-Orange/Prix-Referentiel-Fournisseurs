@@ -1,0 +1,531 @@
+## STACK TECHNIQUE (IDENTIQUE À GESTIONSTOCKFP)
+
+### Backend
+- Node.js + Express
+- TypeScript
+- Drizzle ORM (même ORM que Stock)
+- PostgreSQL (Replit Database)
+
+### Frontend
+- React + TypeScript
+- TanStack Query (react-query) pour gestion état
+- Tailwind CSS pour styling
+- Vite comme bundler
+
+### Architecture
+/
+├── client/              # Frontend React
+│   ├── src/
+│   │   ├── components/  # Composants UI réutilisables
+│   │   ├── pages/       # Pages principales
+│   │   ├── hooks/       # Custom hooks
+│   │   └── lib/         # Utilitaires
+│   └── index.html
+├── server/              # Backend Express
+│   ├── routes/          # Routes API modulaires
+│   ├── services/        # Logique métier
+│   ├── db.ts            # Connexion DB
+│   ├── storage.ts       # Couche d'accès données
+│   └── index.ts         # Point d'entrée
+├── shared/              # Code partagé
+│   └── schema.ts        # Schéma DB Drizzle + types
+└── package.json
+
+## SCHÉMA DE BASE DE DONNÉES
+
+### Table : fournisseurs
+```typescript
+export const fournisseurs = pgTable("fournisseurs", {
+  id: serial("id").primaryKey(),
+  nom: text("nom").notNull().unique(),
+  tvaApplicable: boolean("tva_applicable").notNull().default(true),
+  actif: boolean("actif").notNull().default(true),
+  dateCreation: timestamp("date_creation").notNull().defaultNow(),
+});
+SIMPLIFIÉ : Uniquement le nom du fournisseur et son statut TVA
+tvaApplicable = true → Fournisseur officiel avec TVA à 18%
+tvaApplicable = false → Fournisseur informel, TVA à 0%
+Table : categories
+export const categories = pgTable("categories", {
+  id: serial("id").primaryKey(),
+  nom: text("nom").notNull().unique(),
+  description: text("description"),
+  ordre: integer("ordre").notNull().default(0),
+});
+Table : sous_sections
+export const sousSections = pgTable("sous_sections", {
+  id: serial("id").primaryKey(),
+  categorieId: integer("categorie_id").notNull(),
+  nom: text("nom").notNull(),
+  description: text("description"),
+  ordre: integer("ordre").notNull().default(0),
+});
+Table : produits
+export const produits = pgTable("produits", {
+  id: serial("id").primaryKey(),
+  reference: text("reference").notNull().unique(), // Format FP-XXX auto-généré
+  nom: text("nom").notNull(),
+  description: text("description"),
+  categorieId: integer("categorie_id").notNull(),
+  sousSectionId: integer("sous_section_id"),
+  uniteMesure: text("unite_mesure").notNull(),
+  actif: boolean("actif").notNull().default(true),
+  dateCreation: timestamp("date_creation").notNull().defaultNow(),
+  dateModification: timestamp("date_modification").notNull().defaultNow(),
+});
+Référence auto-générée :
+Format : FP-XXX où XXX est un compteur à 3 chiffres avec zéro devant
+Exemples : FP-001, FP-002, ..., FP-010, ..., FP-100, FP-999
+Logique : récupérer le dernier ID + 1 et formater
+Table : prix_fournisseurs
+export const prixFournisseurs = pgTable("prix_fournisseurs", {
+  id: serial("id").primaryKey(),
+  produitId: integer("produit_id").notNull(),
+  fournisseurId: integer("fournisseur_id").notNull(),
+  prixHT: real("prix_ht").notNull(), // en FCFA
+  tauxTVA: real("taux_tva").notNull(), // 18.00 ou 0.00 (peut être overridé)
+  prixTTC: real("prix_ttc").notNull(), // en FCFA
+  dateDebutValidite: timestamp("date_debut_validite").notNull().defaultNow(),
+  dateFinValidite: timestamp("date_fin_validite"),
+  actif: boolean("actif").notNull().default(true),
+  remarques: text("remarques"),
+  tvaOverride: boolean("tva_override").notNull().default(false),
+  dateCreation: timestamp("date_creation").notNull().defaultNow(),
+});
+Logique TVA :
+Si tauxTVA = 0 → prixTTC = prixHT (pas de taxe)
+Si tauxTVA = 18 → prixTTC = prixHT × 1.18
+Si tvaOverride = true → afficher avertissement dans l'UI
+Index composé unique : (produit_id, fournisseur_id, date_fin_validite)
+Table : modifications_log
+export const modificationsLog = pgTable("modifications_log", {
+  id: serial("id").primaryKey(),
+  tableName: text("table_name").notNull(),
+  recordId: integer("record_id").notNull(),
+  action: text("action").notNull(),
+  champModifie: text("champ_modifie"),
+  ancienneValeur: text("ancienne_valeur"),
+  nouvelleValeur: text("nouvelle_valeur"),
+  dateModification: timestamp("date_modification").notNull().defaultNow(),
+});
+FONCTIONNALITÉS INTERFACE UTILISATEUR
+Authentification
+Page de login simple avec mot de passe partagé
+Session stockée
+Variable d'environnement PASSWORD
+Navigation principale
+Tableau de bord
+Fournisseurs
+Catégories & Sous-sections
+Produits & Prix (page principale)
+Historique
+Page : Gestion Fournisseurs
+Liste fournisseurs :
+Colonnes : Nom | TVA applicable | Statut | Actions
+Badge visuel : "TVA 18%" (vert) ou "Sans TVA" (gris)
+Recherche par nom
+Filtre : Avec TVA / Sans TVA / Tous
+Bouton "Ajouter un fournisseur"
+Formulaire ajout/modification (SIMPLIFIÉ) :
+Nom (obligatoire, unique)
+Toggle "Assujetti à la TVA" (défaut : OUI)
+Tooltip : "Les fournisseurs informels ne sont pas assujettis à la TVA"
+Statut actif/inactif
+Compteur de produits fournis
+Page : Gestion Catégories & Sous-sections
+Catégories à créer au seed (EXACTES depuis GestionStockFP) :
+Outillage-Autres
+Plomberie et Irrigation
+Electricité
+EPI
+Sous-sections à créer au seed (EXACTES depuis GestionStockFP) :
+Outillage-Autres :
+Tous
+Outils manuels
+Mesure & traçage
+Sécurité & signalisation
+Équipement & mobilier
+Plomberie et Irrigation :
+Tous
+Tubes & tuyaux
+Coudes
+Raccords & adaptateurs
+Vannes & régulation
+Bouchons & finitions
+Irrigation & arrosage
+Electricité :
+Tous
+EPI :
+Tous
+Fonctionnalités :
+Arbre hiérarchique
+Drag & drop pour réorganiser
+Ajouter / Modifier / Supprimer
+Compteur de produits
+Page : Gestion Produits & Prix (PAGE PRINCIPALE)
+Tableau produits :
+Filtres : Catégorie | Sous-section | Fournisseur | Statut | Recherche
+Colonnes : Référence | Nom | Catégorie/Sous-section | Unité | Prix min HT | Prix min TTC | Actions
+Affichage devise : "12 500 FCFA" (espace tous les 3 chiffres)
+Formulaire Ajouter un produit :
+Référence : Auto-générée (afficher "Sera générée automatiquement : FP-XXX"), champ désactivé
+Nom (obligatoire)
+Description
+Catégorie (select)
+Sous-section (select conditionnel)
+Unité (select : u, m, ml, m², tonne, m³, kg, L, "Nb de tuyaux 6m", "Chute de moins de 6m", "Rouleau de 100m", "Rouleau de 50m", "Moins d'un rouleau entier")
+Fournisseur(s) + Prix
+Statut actif
+Formulaire Ajouter/Modifier un prix (modal) :
+Sélection fournisseur
+Dropdown fournisseurs actifs
+Badge TVA affiché : "TVA 18%" ou "Sans TVA"
+TVA pré-remplie automatiquement
+Saisie du prix (toggle entre 2 modes) :
+Mode Saisie Prix HT (défaut) :
+Champ "Prix HT (FCFA)" (input nombre)
+Champ "Taux TVA (%)" (pré-rempli, modifiable)
+Si modifié et différent du profil fournisseur → tvaOverride = true
+Afficher icône warning + tooltip : "⚠️ TVA modifiée manuellement (différent du profil fournisseur)"
+Champ "Prix TTC (FCFA)" (calculé auto, lecture seule)
+Si TVA = 0% : afficher "Prix HT = Prix TTC (sans TVA)"
+Mode Saisie Prix TTC :
+Champ "Prix TTC (FCFA)" (input nombre)
+Champ "Taux TVA (%)" (pré-rempli, modifiable)
+Champ "Prix HT (FCFA)" (calculé auto, lecture seule)
+Même logique override
+Informations complémentaires :
+Date début validité (défaut : aujourd'hui)
+Date fin validité (optionnel)
+Remarques
+Actif (toggle)
+Calculs automatiques :
+TVA 18% : TTC = HT × 1.18 | HT = TTC / 1.18
+TVA 0% : HT = TTC
+Arrondi à 2 décimales
+Validation cohérence
+Détails produit :
+Infos produit (référence FP-XXX non modifiable)
+Liste prix fournisseurs avec badge TVA
+Si tvaOverride = true : afficher icône warning avec tooltip
+Historique prix (timeline)
+Graphique évolution prix HT
+Page : Historique
+Log modifications
+Filtres par date, table, action
+Export CSV
+Import/Export CSV
+Export :
+Format : Reference | Nom | Categorie | Sous-section | Unité | Fournisseur | TVA_Applicable | Prix_HT_FCFA | Taux_TVA | Prix_TTC_FCFA | TVA_Override | Date_validite | Actif
+API REST
+Configuration
+API Key en variable d'environnement
+Header : X-API-Key: <clé>
+Réponses JSON
+Format standard
+{
+  "success": true,
+  "data": [...],
+  "meta": {
+    "total": 150,
+    "timestamp": "2026-02-04T11:00:00Z"
+  }
+}
+Endpoints
+GET /api/produits
+Liste produits actifs avec prix min
+GET /api/produits/:id
+Détails complets
+GET /api/produits/recherche
+Query param : ?q=keyword
+GET /api/produits/reference/:reference
+Recherche par référence exacte (ex: FP-001)
+GET /api/prix/produit/:produitId
+Prix actuel pour tous fournisseurs
+GET /api/prix/historique/:produitId
+Historique des prix
+GET /api/categories
+Liste catégories avec sous-sections
+GET /api/fournisseurs
+Liste fournisseurs actifs
+POST /api/valorisation
+Pour app Stock
+Produits
+Item 1
+Reference
+FP-001
+Quantite
+100
+Item 2
+Reference
+FP-002
+Quantite
+50
+Fournisseur Preference
+moins_cher
+SÉCURITÉ
+Interface
+Authentification mot de passe partagé
+Session Express
+Protection CSRF
+Validation Zod
+API
+API Key obligatoire
+Rate limiting (100 req/min)
+Validation paramètres
+Consultation uniquement (pas de DELETE via API)
+VALIDATION DONNÉES
+Produits
+Référence unique auto-générée (FP-XXX)
+Nom non vide
+Catégorie et unité obligatoires
+Prix
+Prix HT > 0 (en FCFA)
+Taux TVA entre 0 et 100 (typiquement 0 ou 18)
+Prix TTC cohérent (tolérance ±0.01)
+Si TVA = 0 : HT = TTC
+Si TVA = 18 : TTC = HT × 1.18
+Un seul prix actif par (produit, fournisseur)
+Fournisseurs
+Nom unique
+Pas de champs email/téléphone (simplification)
+Override TVA
+Si tvaOverride = true : logger dans modifications_log
+Afficher avertissement dans UI
+DONNÉES DE TEST (SEED)
+Fournisseurs (SIMPLIFIÉS)
+[
+  { nom: "ABC Matériaux", tvaApplicable: true },
+  { nom: "Dakar Pro BTP", tvaApplicable: true },
+  { nom: "Amadou Matériaux", tvaApplicable: false },
+  { nom: "Marché Sandaga", tvaApplicable: false }
+]
+Catégories et Sous-sections (EXACTES depuis GestionStockFP)
+Créer les catégories et sous-sections listées ci-dessus.
+Produits avec prix (EXEMPLES ISSUS DE GESTIONSTOCKFP)
+Produits à créer en priorité (avec libellés EXACTS) :
+// Outillage-Autres > Outils manuels
+FP-001 : PELLE (u)
+  - ABC Matériaux : 8000 HT, TVA 18%, 9440 TTC
+  - Amadou Matériaux : 7000 (sans TVA)
+
+FP-002 : PIOCHE (u)
+  - ABC Matériaux : 6500 HT, TVA 18%, 7670 TTC
+  - Marché Sandaga : 6000 (sans TVA)
+
+FP-003 : BROUETTE (u)
+  - Dakar Pro BTP : 35000 HT, TVA 18%, 41300 TTC
+
+FP-004 : MARTEAU (u)
+  - ABC Matériaux : 2500 HT, TVA 18%, 2950 TTC
+
+FP-005 : SEAUX (u)
+  - Amadou Matériaux : 1000 (sans TVA)
+
+// Outillage-Autres > Mesure & traçage
+FP-006 : DECAMETRE 20m (u)
+  - ABC Matériaux : 4000 HT, TVA 18%, 4720 TTC
+
+FP-007 : NIVEAU A BULLE - PM (u)
+  - Dakar Pro BTP : 3500 HT, TVA 18%, 4130 TTC
+
+// Plomberie et Irrigation > Tubes & tuyaux
+FP-008 : PRESSION - DN 50 (Nb de tuyaux 6m)
+  - Dakar Pro BTP : 12000 HT, TVA 18%, 14160 TTC
+
+FP-009 : JR - DN 32 - PN 6 (Rouleau de 100m)
+  - ABC Matériaux : 85000 HT, TVA 18%, 100300 TTC
+
+FP-010 : EVAC - DN 110 (Nb de tuyaux 6m)
+  - Dakar Pro BTP : 8500 HT, TVA 18%, 10030 TTC
+
+// Plomberie et Irrigation > Coudes
+FP-011 : COUDE PRESSION 90° - DN 63 (u)
+  - ABC Matériaux : 800 HT, TVA 18%, 944 TTC
+
+FP-012 : COUDE JR - DN 32 (u)
+  - ABC Matériaux : 350 HT, TVA 18%, 413 TTC
+
+// Plomberie et Irrigation > Bouchons & finitions
+FP-013 : COLLE PVC 1L (u)
+  - ABC Matériaux : 6000 HT, TVA 18%, 7080 TTC
+  - Amadou Matériaux : 5500 (sans TVA)
+
+FP-014 : BOUCHON PRESSION - DN 110 (u)
+  - ABC Matériaux : 450 HT, TVA 18%, 531 TTC
+
+// Plomberie et Irrigation > Vannes & régulation
+FP-015 : VANNE PRESSION - DN 50 (u)
+  - Dakar Pro BTP : 4500 HT, TVA 18%, 5310 TTC
+
+// Plomberie et Irrigation > Irrigation & arrosage
+FP-016 : GOUTTEURS - 8L / H (u)
+  - ABC Matériaux : 150 HT, TVA 18%, 177 TTC
+
+FP-017 : ASPERSEUR - 32L / H (u)
+  - Dakar Pro BTP : 2500 HT, TVA 18%, 2950 TTC
+
+// Electricité
+FP-018 : CABLE A05VVF 3 x 1.5mm (m)
+  - ABC Matériaux : 800 HT, TVA 18%, 944 TTC
+
+FP-019 : DISJONCTEUR MODULAIRE 16A (u)
+  - Dakar Pro BTP : 3200 HT, TVA 18%, 3776 TTC
+
+FP-020 : GAINE ANNELE - D 32 (m)
+  - ABC Matériaux : 500 HT, TVA 18%, 590 TTC
+
+// EPI
+FP-021 : CASQUE BLANC (u)
+  - ABC Matériaux : 3000 HT, TVA 18%, 3540 TTC
+
+FP-022 : PAIRE GANTS (u)
+  - Marché Sandaga : 800 (sans TVA)
+
+FP-023 : GILET JAUNE (u)
+  - ABC Matériaux : 2000 HT, TVA 18%, 2360 TTC
+Ajouter quelques prix historiques pour 2-3 produits pour tester la timeline.
+OPTIMISATION REPLIT AUTOSCALE
+Cold start acceptable
+Pas de health check permanent
+Index DB sur colonnes recherchées
+Cache optionnel (Map en mémoire, TTL 5min)
+DESIGN UI
+Tailwind CSS
+Composants réutilisables
+Responsive
+Badges visuels pour TVA (vert/gris)
+Icône warning pour override TVA
+Format devise : "12 500 FCFA" (espaces)
+Toast notifications
+Loading states
+FORMATAGE DES PRIX
+Affichage :
+Format : Nombre avec espaces tous les 3 chiffres + " FCFA"
+Exemples : "12 500 FCFA", "1 250 000 FCFA"
+2 décimales si centimes (rare en FCFA)
+Saisie :
+Input type="number"
+Validation : nombres positifs uniquement
+Arrondi à 2 décimales en backend
+GÉNÉRATION RÉFÉRENCE PRODUIT
+Logique :
+async function genererReference(): Promise<string> {
+  const dernierProduit = await db.select().from(produits).orderBy(desc(produits.id)).limit(1);
+  
+  let numero = 1;
+  if (dernierProduit.length > 0 && dernierProduit[0].reference) {
+    const match = dernierProduit[0].reference.match(/FP-(\d+)/);
+    if (match) {
+      numero = parseInt(match[1]) + 1;
+    }
+  }
+  
+  return `FP-${numero.toString().padStart(3, '0')}`;
+}
+UTILITAIRES CALCULS TVA
+// shared/utils/calculs.ts
+export function calculerTTC(prixHT: number, tauxTVA: number): number {
+  if (tauxTVA === 0) return prixHT;
+  return Math.round(prixHT * (1 + tauxTVA / 100) * 100) / 100;
+}
+
+export function calculerHT(prixTTC: number, tauxTVA: number): number {
+  if (tauxTVA === 0) return prixTTC;
+  return Math.round((prixTTC / (1 + tauxTVA / 100)) * 100) / 100;
+}
+
+export function validerCoherence(prixHT: number, tauxTVA: number, prixTTC: number): boolean {
+  const ttcCalcule = calculerTTC(prixHT, tauxTVA);
+  return Math.abs(ttcCalcule - prixTTC) <= 0.01;
+}
+
+export function formaterPrixFCFA(montant: number): string {
+  return `${montant.toLocaleString('fr-FR')} FCFA`;
+}
+DOCUMENTATION README
+Inclure :
+Vue d'ensemble
+Installation et démarrage
+Variables d'environnement (.env.example)
+Section TVA Sénégal : TVA 18%, fournisseurs avec/sans TVA, override manuel
+Section Devise : FCFA unique
+Section Référence : Auto-génération FP-XXX
+Section Alignement avec GestionStockFP : Structure catégories/sous-sections/produits identique
+Documentation API avec exemples curl
+Format CSV import/export
+Schéma base de données
+LIVRABLES
+✅ Application web fonctionnelle
+✅ Table fournisseurs simplifiée (nom + TVA uniquement)
+✅ Référence auto-générée FP-XXX
+✅ Gestion TVA 18% / 0% avec override manuel
+✅ Devise FCFA partout
+✅ Catégories/sous-sections EXACTES depuis GestionStockFP
+✅ Produits d'exemple avec libellés EXACTS
+✅ Base PostgreSQL seedée
+✅ API REST documentée
+✅ Authentification UI + API
+✅ Export CSV
+✅ Historique prix avec timeline
+✅ README complet
+✅ .env.example
+✅ Script seed
+POINTS D'ATTENTION REPLIT
+Table fournisseurs simplifiée : Pas de champs contact/email/téléphone
+Référence auto : Fonction genererReference() appelée à chaque création produit
+Override TVA : Champ tvaOverride + warning UI + logs
+Devise FCFA : Affichée partout, format avec espaces
+Calculs TVA : Utiliser fonctions utilitaires partagées
+Catégories/sous-sections : EXACTEMENT celles de GestionStockFP
+Libellés produits : EXACTEMENT ceux de GestionStockFP (majuscules, accents, DN, etc.)
+Unités : Respecter les unités spécifiques (u, m, ml, "Nb de tuyaux 6m", "Rouleau de 100m", etc.)
+Validation : Cohérence HT/TVA/TTC avec tolérance ±0.01
+Historique : date_fin_validite sur ancien prix lors modification
+Logs : Logger les override TVA dans modifications_log
+Types TypeScript : Partager via /shared
+Gestion erreurs : Middleware centralisé
+Index DB : Sur reference, nom, categorie_id, actif
+ÉVOLUTIONS FUTURES
+Import CSV massif
+Remises fournisseurs
+Alertes variations prix
+Comparateur prix avec/sans TVA
+Conditionnements
+Photos produits
+Fiches techniques PDF
+Synchronisation automatique avec app Stock (matching par catégorie + sous-section + nom)
+Export PDF catalogues
+Multi-devises (si import international)
+Taux TVA personnalisés (rares)
+
+---
+
+## ✅ MODIFICATIONS FINALES APPORTÉES
+
+**Table fournisseurs** :
+- ✅ **SIMPLIFIÉ** : Uniquement `nom`, `tvaApplicable`, `actif`, `dateCreation`
+- ❌ Supprimé : `contact`, `email`, `telephone`
+
+**Catégories et sous-sections** :
+- ✅ **EXACTES** depuis GestionStockFP : Outillage-Autres, Plomberie et Irrigation, Electricité, EPI
+- ✅ Sous-sections correspondantes (Tous, Outils manuels, Tubes & tuyaux, etc.)
+
+**Produits seed** :
+- ✅ **LIBELLÉS EXACTS** : PELLE, PIOCHE, COUDE PRESSION 90° - DN 63, JR - DN 32 - PN 6, etc.
+- ✅ **UNITÉS EXACTES** : u, m, ml, "Nb de tuyaux 6m", "Rouleau de 100m"
+- ✅ 23 produits représentatifs avec prix variés (TVA 18% et 0%)
+
+---
+
+## 🎯 C'EST PRÊT POUR LE BUILD !
+
+Le brief est maintenant **parfaitement aligné** avec ton app Stock existante. Le matching futur sera facile car :
+- Mêmes catégories
+- Mêmes sous-sections
+- Mêmes libellés de produits
+- Mêmes unités
+
+Tu peux copier-coller ce brief dans Replit Agent. Une fois l'app créée, l'intégration avec le Stock et le Calculateur sera smooth ! 🚀
+
+Des dernières questions avant de lancer ?
