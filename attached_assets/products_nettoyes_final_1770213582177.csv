@@ -1,0 +1,285 @@
+categorie,sous_section,nom,unite
+Clôture,Tous,Bouteille dilluant,u
+Clôture,Tous,Clôture 120,m
+Clôture,Tous,Clôture 150,m
+Clôture,Tous,Enfonce-piquet grillage,u
+Clôture,Tous,Peinture anti-rouille,u
+Clôture,Tous,Pinceau peinture,u
+Clôture,Tous,Piquets 120,u
+Clôture,Tous,Piquets 150,u
+Clôture,Tous,Portail Cloture 120 (camion),u
+Clôture,Tous,Portail Cloture 120 (piéton),u
+Clôture,Tous,Portail Clôture 150 (piéton),u
+Clôture,Tous,Poteaux de tension 120,u
+Clôture,Tous,Poteaux de tension 120 (angle),u
+Clôture,Tous,Poteaux de tension 150,u
+Clôture,Tous,Poteaux de tension 150 (angle),u
+Clôture,Tous,Tendeur clôture,u
+EPI,Tous,Bottes maintenance (paire),u
+EPI,Tous,CASQUE BLANC,u
+EPI,Tous,CASQUE BLEU,u
+EPI,Tous,Casques vert,u
+EPI,Tous,Combinaison maintenance,u
+EPI,Tous,Combinaison maintenance XXL,u
+EPI,Tous,FOULARD,u
+EPI,Tous,GILET JAUNE,u
+EPI,Tous,Gilets sécurité (orange),u
+EPI,Tous,PAIRE CHAUSSURES - 41,u
+EPI,Tous,PAIRE CHAUSSURES - 42,u
+EPI,Tous,PAIRE CHAUSSURES - 44,u
+EPI,Tous,PAIRE CHAUSSURES - 45,u
+EPI,Tous,PAIRE CHAUSSURES - 46,u
+EPI,Tous,PAIRE GANTS,u
+EPI,Tous,T-SHIRT,u
+Electricité,Tous,BOITE DE LIAISON ETANCHE,u
+Electricité,Tous,CABLE A05VVF 3 x 1.5mm,m
+Electricité,Tous,CABLE H05VVF 3x2.5mm,m
+Electricité,Tous,Coffret électrique PM,u
+Electricité,Tous,Câble H05VVF 3x2.5 mm,Rouleau de 100m
+Electricité,Tous,DISJONCTEUR MODULAIRE 10A,u
+Electricité,Tous,DISJONCTEUR MODULAIRE 16A,u
+Electricité,Tous,GAINE ANNELE - D 13,m
+Electricité,Tous,GAINE ANNELE - D 32,m
+Electricité,Tous,GAINE ANNELÉE - D15,m
+Electricité,Tous,GAINE ANNELÉE - D20,m
+Electricité,Tous,GAINE ANNELÉE - D25,Rouleau de 100m
+Electricité,Tous,GAINE ANNELÉE - D25,m
+Electricité,Tous,GAINE ANNELÉE - D32,Rouleau de 50m
+Electricité,Tous,HORLOGE MODULAIRE ANALOGIQUE,u
+Electricité,Tous,HORLOGE MODULAIRE NUMERIQUE,u
+Electricité,Tous,Multimètre numérique,u
+Electricité,Tous,Rallonge électrique,u
+Equipements lourds,Tous,Compacteur,u
+Equipements lourds,Tous,Groupe électrogène,u
+Equipements lourds,Tous,Huile Moteurs,L
+Equipements lourds,Tous,KIT TOPO,u
+Equipements lourds,Tous,MACHINE A SOUDURE,u
+Equipements lourds,Tous,Marteau-piqueur,u
+Equipements lourds,Tous,Meule avec batterie,u
+Equipements lourds,Tous,Meule électrique (AC),u
+Etanchéité,Géomembranes,Toile PVC 630g,m²
+Etanchéité,Géomembranes,Toile PVC 800g,m²
+Etanchéité,Geotextile,Geotextile,m²
+Monolyto,Tous,Monolyto 15 angle,u
+Monolyto,Tous,Monolyto 15 central,u
+Monolyto,Tous,Monolyto 15 demi,u
+Outillage-Autres,Mesure & traçage,CORDEAU,u
+Outillage-Autres,Mesure & traçage,DECAMETRE 20m,u
+Outillage-Autres,Mesure & traçage,DECAMETRE 30m,u
+Outillage-Autres,Mesure & traçage,EQUERRE,u
+Outillage-Autres,Mesure & traçage,METRE 3m,u
+Outillage-Autres,Mesure & traçage,METRE 5m,u
+Outillage-Autres,Mesure & traçage,NIVEAU A BULLE - GM,u
+Outillage-Autres,Mesure & traçage,NIVEAU A BULLE - MINI,u
+Outillage-Autres,Mesure & traçage,NIVEAU A BULLE - PM,u
+Outillage-Autres,Mesure & traçage,Niveau à eau,m
+Outillage-Autres,Outils manuels,ARRACHE CLOUS,u
+Outillage-Autres,Outils manuels,BROUETTE,u
+Outillage-Autres,Outils manuels,BURIN,u
+Outillage-Autres,Outils manuels,CLE DE SERRAGE,u
+Outillage-Autres,Outils manuels,Cisaille d'entretien paysager,u
+Outillage-Autres,Outils manuels,Cisaille de ferrailleur,u
+Outillage-Autres,Outils manuels,Ciseaux,u
+Outillage-Autres,Outils manuels,Ciseaux baches,u
+Outillage-Autres,Outils manuels,Coupe coupe,u
+Outillage-Autres,Outils manuels,DAMEUSE,m
+Outillage-Autres,Outils manuels,Embout pelle,u
+Outillage-Autres,Outils manuels,Embout pioche,u
+Outillage-Autres,Outils manuels,GRATTOIR,u
+Outillage-Autres,Outils manuels,GRIFFE 14-12,u
+Outillage-Autres,Outils manuels,GRIFFE 8-10,u
+Outillage-Autres,Outils manuels,GRIFFE 8-6,u
+Outillage-Autres,Outils manuels,KIT CLES A LAINE,u
+Outillage-Autres,Outils manuels,KIT TOURNEVIS,u
+Outillage-Autres,Outils manuels,Kit embout perceuse GM,u
+Outillage-Autres,Outils manuels,LAME DE SCIE (PVC),u
+Outillage-Autres,Outils manuels,MANCHE PELLE,u
+Outillage-Autres,Outils manuels,MANCHE PIOCHE,u
+Outillage-Autres,Outils manuels,MARTEAU,u
+Outillage-Autres,Outils manuels,PELLE,u
+Outillage-Autres,Outils manuels,PELLE A CIMENT,u
+Outillage-Autres,Outils manuels,PELLE A POUSSIERE,u
+Outillage-Autres,Outils manuels,PELLE BECHE,u
+Outillage-Autres,Outils manuels,PELLE JARDINAGE,u
+Outillage-Autres,Outils manuels,PINCE A GAZ,u
+Outillage-Autres,Outils manuels,PINCE UNIVERSELLE,u
+Outillage-Autres,Outils manuels,PIOCHE,u
+Outillage-Autres,Outils manuels,PORTE LAME (PVC),u
+Outillage-Autres,Outils manuels,Perceuse tuyau irrigation,u
+Outillage-Autres,Outils manuels,Pince multiprise,u
+Outillage-Autres,Outils manuels,Pince serrage,u
+Outillage-Autres,Outils manuels,Pistolet à mastic,u
+Outillage-Autres,Outils manuels,RATEAU,u
+Outillage-Autres,Outils manuels,SCIE A BOIS,u
+Outillage-Autres,Outils manuels,SEAUX,u
+Outillage-Autres,Outils manuels,SERRE-JOINT,u
+Outillage-Autres,Outils manuels,Scie PVC,u
+Outillage-Autres,Outils manuels,TALOCHE,u
+Outillage-Autres,Outils manuels,TENAILLES,u
+Outillage-Autres,Outils manuels,Table ferrailleur,u
+Outillage-Autres,Outils manuels,Truelle,u
+Outillage-Autres,Outils manuels,Tuyau pour coudage,u
+Outillage-Autres,Outils manuels,Tuyaux arrosage,u
+Outillage-Autres,Sécurité & signalisation,Attache / collier,u
+Outillage-Autres,Sécurité & signalisation,Couvercle en bois,u
+Outillage-Autres,Sécurité & signalisation,Couvercle regard 40 x 40,u
+Outillage-Autres,Sécurité & signalisation,Couvercle regard 60 x 60,u
+Outillage-Autres,Sécurité & signalisation,FILET AVERTISSEUR BLEU,m
+Outillage-Autres,Sécurité & signalisation,FILET AVERTISSEUR ROUGE,m
+Outillage-Autres,Sécurité & signalisation,REGARD DE VISITE GM,u
+Outillage-Autres,Sécurité & signalisation,REGARD DE VISITE PM,u
+Outillage-Autres,Sécurité & signalisation,Rouleau signalisation,u
+Outillage-Autres,Équipement & mobilier,BALAI,u
+Outillage-Autres,Équipement & mobilier,Echelle,u
+Outillage-Autres,Équipement & mobilier,GLACIERE,m
+Outillage-Autres,Équipement & mobilier,Gaz PM,u
+Outillage-Autres,Équipement & mobilier,Lampe torche,u
+Outillage-Autres,Équipement & mobilier,MATELAS,u
+Outillage-Autres,Équipement & mobilier,TABLE PLIANTE,u
+Outillage-Autres,Équipement & mobilier,TABOURET,u
+Outillage-Autres,Équipement & mobilier,Théière,u
+Outillage-Autres,Équipement & mobilier,Échelle,u
+Plomberie et Irrigation,Autres,COLLE PVC 1L,u
+Plomberie et Irrigation,Autres,Colle Mastic,u
+Plomberie et Irrigation,Autres,TEFLON,u
+Plomberie et Irrigation,Autres,TRAVERSÉE PAROI DN 110,u
+Plomberie et Irrigation,Autres,TRAVERSÉE PAROI DN 50,u
+Plomberie et Irrigation,Autres,TRAVERSÉE PAROI DN 63,u
+Plomberie et Irrigation,Autres,TRAVERSÉE PAROI DN 75,u
+Plomberie et Irrigation,Bouchons & finitions,BOUCHON JR - DN 25,u
+Plomberie et Irrigation,Bouchons & finitions,BOUCHON JR - DN 32,u
+Plomberie et Irrigation,Bouchons & finitions,BOUCHON PRESSION - DN 110,u
+Plomberie et Irrigation,Bouchons & finitions,BOUCHON PRESSION - DN 50,u
+Plomberie et Irrigation,Bouchons & finitions,BOUCHON PRESSION - DN 63,u
+Plomberie et Irrigation,Bouchons & finitions,BOUCHON PRESSION - DN 75,u
+Plomberie et Irrigation,Bouchons & finitions,Bouchon JR - DN40,u
+Plomberie et Irrigation,Bouchons & finitions,Bouchon evac 110,u
+Plomberie et Irrigation,Coudes,COUDE EVAC 45 - DN 110,u
+Plomberie et Irrigation,Coudes,COUDE EVAC 45 - DN32,u
+Plomberie et Irrigation,Coudes,COUDE EVAC 45 - DN40,u
+Plomberie et Irrigation,Coudes,COUDE EVAC 45° - DN 125,u
+Plomberie et Irrigation,Coudes,COUDE EVAC 45° - DN 160,u
+Plomberie et Irrigation,Coudes,COUDE EVAC 45° - DN 50,u
+Plomberie et Irrigation,Coudes,COUDE EVAC 87 - DN63,u
+Plomberie et Irrigation,Coudes,COUDE EVAC 90° - DN 32,u
+Plomberie et Irrigation,Coudes,COUDE EVAC 90° - DN 50,u
+Plomberie et Irrigation,Coudes,COUDE EVAC 90° - DN 63,u
+Plomberie et Irrigation,Coudes,COUDE EVAC 90° - DN 75,u
+Plomberie et Irrigation,Coudes,COUDE JR - DN 25,u
+Plomberie et Irrigation,Coudes,COUDE JR - DN 32,u
+Plomberie et Irrigation,Coudes,COUDE JR - DN 40,u
+Plomberie et Irrigation,Coudes,COUDE JR - DN 50,u
+Plomberie et Irrigation,Coudes,COUDE PRESSION 45° - DN 110,u
+Plomberie et Irrigation,Coudes,COUDE PRESSION 45° - DN 32,u
+Plomberie et Irrigation,Coudes,COUDE PRESSION 45° - DN 50,u
+Plomberie et Irrigation,Coudes,COUDE PRESSION 45° - DN 63,u
+Plomberie et Irrigation,Coudes,COUDE PRESSION 45° - DN 75,u
+Plomberie et Irrigation,Coudes,COUDE PRESSION 90° - 3',u
+Plomberie et Irrigation,Coudes,COUDE PRESSION 90° - DN 40,u
+Plomberie et Irrigation,Coudes,COUDE PRESSION 90° - DN 63,u
+Plomberie et Irrigation,Coudes,COUDE PRESSION 90° - DN 75,u
+Plomberie et Irrigation,Irrigation & arrosage,ASPERSEUR - 32L / H,u
+Plomberie et Irrigation,Irrigation & arrosage,"FILTRE A DISQUE 130 MICRONS - 1""1/2",u
+Plomberie et Irrigation,Irrigation & arrosage,GOUTTEURS - 6L / H,u
+Plomberie et Irrigation,Irrigation & arrosage,GOUTTEURS - 8L / H,u
+Plomberie et Irrigation,Irrigation & arrosage,PIQUET ASPERSEUR,u
+Plomberie et Irrigation,Raccords & adaptateurs,CLAPET ANTI RETOUR PRESSION DN 50,u
+Plomberie et Irrigation,Raccords & adaptateurs,CLAPET LAITON 1''1/2 F,u
+Plomberie et Irrigation,Raccords & adaptateurs,EMBOUT MIX JR 1''- DN 25,u
+Plomberie et Irrigation,Raccords & adaptateurs,EMBOUT MIX JR 1''- DN 32,u
+Plomberie et Irrigation,Raccords & adaptateurs,EMBOUT MIX JR 1'1/2 - DN 50,u
+Plomberie et Irrigation,Raccords & adaptateurs,EMBOUT MIX JR 1'1/4 - DN 32,u
+Plomberie et Irrigation,Raccords & adaptateurs,EMBOUT MIX JR 1'1/4 - DN 40,u
+Plomberie et Irrigation,Raccords & adaptateurs,EMBOUT MIX PRESSION - 1'- DN 25,u
+Plomberie et Irrigation,Raccords & adaptateurs,EMBOUT MIX PRESSION - 1'1/2 - DN 50,u
+Plomberie et Irrigation,Raccords & adaptateurs,EMBOUT MIX PRESSION - 1'1/2 - DN 63,u
+Plomberie et Irrigation,Raccords & adaptateurs,EMBOUT MIX PRESSION - 1'1/4 - DN 32,u
+Plomberie et Irrigation,Raccords & adaptateurs,EMBOUT MIX PRESSION - 1'1/4 - DN 40,u
+Plomberie et Irrigation,Raccords & adaptateurs,EMBOUT MIX PRESSION - 1'1/4 - DN 50,u
+Plomberie et Irrigation,Raccords & adaptateurs,Embout mix pvc F25xM32 - 1',u
+Plomberie et Irrigation,Raccords & adaptateurs,Embout mix pvc F40xM50 - 1'1/2,u
+Plomberie et Irrigation,Raccords & adaptateurs,Embout mix pvc F50xM63 - 1'1/2,u
+Plomberie et Irrigation,Raccords & adaptateurs,Embout mix pvc F63xM75 - M2',u
+Plomberie et Irrigation,Raccords & adaptateurs,RACCORD PRESSION 1',u
+Plomberie et Irrigation,Raccords & adaptateurs,RACCORD PRESSION 1'1/4,u
+Plomberie et Irrigation,Raccords & adaptateurs,RACCORD UNION PRESSION DN 110,u
+Plomberie et Irrigation,Raccords & adaptateurs,RACCORD UNION PRESSION DN 32,u
+Plomberie et Irrigation,Raccords & adaptateurs,RACCORD UNION PRESSION DN 50,u
+Plomberie et Irrigation,Raccords & adaptateurs,RACCORD UNION PRESSION DN 63,u
+Plomberie et Irrigation,Raccords & adaptateurs,RACCORD UNION PRESSION DN 75,u
+Plomberie et Irrigation,Raccords & adaptateurs,REDUC JR - DN 40/32,u
+Plomberie et Irrigation,Raccords & adaptateurs,REDUC JR - DN 50/32,u
+Plomberie et Irrigation,Raccords & adaptateurs,REDUC PRESSION - DN 110/50,u
+Plomberie et Irrigation,Raccords & adaptateurs,REDUC PRESSION - DN 110/75,u
+Plomberie et Irrigation,Raccords & adaptateurs,REDUC PRESSION - DN 40/25,u
+Plomberie et Irrigation,Raccords & adaptateurs,REDUC PRESSION - DN 63/50,u
+Plomberie et Irrigation,Raccords & adaptateurs,REDUC PRESSION - DN 75/63,u
+Plomberie et Irrigation,Raccords & adaptateurs,TE EVAC - DN 110,u
+Plomberie et Irrigation,Raccords & adaptateurs,TE JR - DN 25,u
+Plomberie et Irrigation,Raccords & adaptateurs,TE JR - DN 32,u
+Plomberie et Irrigation,Raccords & adaptateurs,TE JR - DN 40,u
+Plomberie et Irrigation,Raccords & adaptateurs,TE JR - DN 50,u
+Plomberie et Irrigation,Raccords & adaptateurs,TE PRESSION - DN 110,u
+Plomberie et Irrigation,Raccords & adaptateurs,TE PRESSION - DN 25,u
+Plomberie et Irrigation,Raccords & adaptateurs,TE PRESSION - DN 32,u
+Plomberie et Irrigation,Raccords & adaptateurs,TE PRESSION - DN 50,u
+Plomberie et Irrigation,Raccords & adaptateurs,TE PRESSION - DN 75,u
+Plomberie et Irrigation,Raccords & adaptateurs,TE PRESSION DN - 63,u
+Plomberie et Irrigation,Raccords & adaptateurs,TE REDUC JR - DN 32/25/32,u
+Plomberie et Irrigation,Raccords & adaptateurs,TE REDUC JR - DN 40/ 32/40,u
+Plomberie et Irrigation,Raccords & adaptateurs,TE REDUC JR - DN 40/1'´/40,u
+Plomberie et Irrigation,Raccords & adaptateurs,TE REDUC JR - DN 50/ 1''/50,u
+Plomberie et Irrigation,Raccords & adaptateurs,UNION JR - DN 25,u
+Plomberie et Irrigation,Raccords & adaptateurs,UNION JR - DN 32,u
+Plomberie et Irrigation,Raccords & adaptateurs,UNION JR - DN 40,u
+Plomberie et Irrigation,Raccords & adaptateurs,UNION JR - DN 50,u
+Plomberie et Irrigation,Raccords & adaptateurs,UNION JR - DN40/32,u
+Plomberie et Irrigation,Raccords & adaptateurs,UNION JR - DN50/32,u
+Plomberie et Irrigation,Raccords & adaptateurs,UNION JR - DN50/40,u
+Plomberie et Irrigation,Raccords & adaptateurs,UNION PRESSION 3'1/2,u
+Plomberie et Irrigation,Tubes & tuyaux,EVAC - DN 110,Nb de tuyaux 6m
+Plomberie et Irrigation,Tubes & tuyaux,EVAC - DN 125,Nb de tuyaux 6m
+Plomberie et Irrigation,Tubes & tuyaux,EVAC - DN 160,Nb de tuyaux 6m
+Plomberie et Irrigation,Tubes & tuyaux,EVAC - DN 40,Nb de tuyaux 6m
+Plomberie et Irrigation,Tubes & tuyaux,EVAC - DN 50,Nb de tuyaux 6m
+Plomberie et Irrigation,Tubes & tuyaux,EVAC - DN 63,Nb de tuyaux 6m
+Plomberie et Irrigation,Tubes & tuyaux,EVAC - DN 75,Nb de tuyaux 6m
+Plomberie et Irrigation,Tubes & tuyaux,EVAC - DN 90,Nb de tuyaux 6m
+Plomberie et Irrigation,Tubes & tuyaux,JR - DN 16 - PN 6,Rouleau de 100m
+Plomberie et Irrigation,Tubes & tuyaux,JR - DN 16 - PN 6,Rouleau de 50m
+Plomberie et Irrigation,Tubes & tuyaux,JR - DN 25 - PN 6,Rouleau de 100m
+Plomberie et Irrigation,Tubes & tuyaux,JR - DN 25 - PN 6,Rouleau de 50m
+Plomberie et Irrigation,Tubes & tuyaux,JR - DN 32 - PN 10,Rouleau de 100m
+Plomberie et Irrigation,Tubes & tuyaux,JR - DN 32 - PN 10,Rouleau de 50m
+Plomberie et Irrigation,Tubes & tuyaux,JR - DN 32 - PN 6,Rouleau de 100m
+Plomberie et Irrigation,Tubes & tuyaux,JR - DN 32 - PN 6,Rouleau de 50m
+Plomberie et Irrigation,Tubes & tuyaux,JR - DN 40 - PN 6,Rouleau de 100m
+Plomberie et Irrigation,Tubes & tuyaux,JR - DN 40 - PN 6,Rouleau de 50m
+Plomberie et Irrigation,Tubes & tuyaux,JR - DN 50 - PN 6,Rouleau de 100m
+Plomberie et Irrigation,Tubes & tuyaux,JR - DN 50 - PN 6,Rouleau de 50m
+Plomberie et Irrigation,Tubes & tuyaux,PRESSION - DN 110,Nb de tuyaux 6m
+Plomberie et Irrigation,Tubes & tuyaux,PRESSION - DN 125,Nb de tuyaux 6m
+Plomberie et Irrigation,Tubes & tuyaux,PRESSION - DN 160,Nb de tuyaux 6m
+Plomberie et Irrigation,Tubes & tuyaux,PRESSION - DN 40,Nb de tuyaux 6m
+Plomberie et Irrigation,Tubes & tuyaux,PRESSION - DN 50,Nb de tuyaux 6m
+Plomberie et Irrigation,Tubes & tuyaux,PRESSION - DN 63,Nb de tuyaux 6m
+Plomberie et Irrigation,Tubes & tuyaux,PRESSION - DN 75,Nb de tuyaux 6m
+Plomberie et Irrigation,Tubes & tuyaux,PRESSION - DN 90,Nb de tuyaux 6m
+Plomberie et Irrigation,Vannes & régulation,ROBINET A BOULE - 1',u
+Plomberie et Irrigation,Vannes & régulation,ROBINET A BOULE - 1'1/2,u
+Plomberie et Irrigation,Vannes & régulation,ROBINET A BOULE - 1'1/4,u
+Plomberie et Irrigation,Vannes & régulation,ROBINET A BOULE - 2',u
+Plomberie et Irrigation,Vannes & régulation,ROBINET A BOULE - 3',u
+Plomberie et Irrigation,Vannes & régulation,VANNE PRESSION - DN 110,u
+Plomberie et Irrigation,Vannes & régulation,VANNE PRESSION - DN 50,u
+Plomberie et Irrigation,Vannes & régulation,VANNE PRESSION - DN 63,u
+Plomberie et Irrigation,Vannes & régulation,VANNE PRESSION - DN 75,u
+Pompes,Tous,Huile pompes,L
+Pompes,Tous,POMPE 10CV,u
+Pompes,Tous,POMPE EAUX CHARGEES,u
+Pompes,Tous,Pompe 05CV,u
+Pompes,Tous,Pompe 07CV,u
+Pompes,Tous,Pompe 13CV,u
+Pompes,Tous,Pompe 3.5CV,u
+Pompes,Tous,Pompe 5.5CV,u
+Pompes,Tous,Pompe 7.5CV,u

@@ -1,0 +1,240 @@
+Clôture → Tous
+EPI → Tous
+Electricité → Tous
+Equipements lourds → Tous
+Etanchéité → Géomembranes, Geotextile
+Monolyto → Tous
+Outillage-Autres → Outils manuels, Mesure & traçage, Sécurité & signalisation, Équipement & mobilier
+Plomberie et Irrigation → Tubes & tuyaux, Coudes, Raccords & adaptateurs, Vannes & régulation, Bouchons & finitions, Autres, Irrigation & arrosage
+Pompes → Tous
+✅ 337 PRODUITS dans ton stock
+📋 BRIEF POUR REPLIT : MISE À JOUR COMPLÈTE
+Copie-colle ce message à Replit :
+🔧 CORRECTIONS IMPORTANTES À APPORTER :
+
+## 1. SUPPRIMER TOUS LES PRIX
+- Vider complètement la table `prix_fournisseurs`
+- Garder uniquement la structure (table vide)
+
+## 2. CORRIGER LES CATÉGORIES ET SOUS-SECTIONS
+
+### CATÉGORIES COMPLÈTES (9 au total) :
+```typescript
+const categories = [
+  { nom: "Clôture", description: "Matériel de clôture" },
+  { nom: "EPI", description: "Équipements de protection individuelle" },
+  { nom: "Electricité", description: "Équipement électrique" },
+  { nom: "Equipements lourds", description: "Équipements et machines lourdes" },
+  { nom: "Etanchéité", description: "Matériaux d'étanchéité et géomembranes" },
+  { nom: "Monolyto", description: "Produits Monolyto" },
+  { nom: "Outillage-Autres", description: "Outils et équipements divers" },
+  { nom: "Plomberie et Irrigation", description: "Matériel de plomberie et systèmes d'irrigation" },
+  { nom: "Pompes", description: "Pompes et équipements de pompage" }
+];
+SOUS-SECTIONS COMPLÈTES (18 au total) :
+const sousSections = [
+  // Clôture
+  { categorie: "Clôture", nom: "Tous" },
+  
+  // EPI
+  { categorie: "EPI", nom: "Tous" },
+  
+  // Electricité
+  { categorie: "Electricité", nom: "Tous" },
+  
+  // Equipements lourds
+  { categorie: "Equipements lourds", nom: "Tous" },
+  
+  // Etanchéité
+  { categorie: "Etanchéité", nom: "Géomembranes" },
+  { categorie: "Etanchéité", nom: "Geotextile" },
+  
+  // Monolyto
+  { categorie: "Monolyto", nom: "Tous" },
+  
+  // Outillage-Autres
+  { categorie: "Outillage-Autres", nom: "Outils manuels" },
+  { categorie: "Outillage-Autres", nom: "Mesure & traçage" },
+  { categorie: "Outillage-Autres", nom: "Sécurité & signalisation" },
+  { categorie: "Outillage-Autres", nom: "Équipement & mobilier" },
+  
+  // Plomberie et Irrigation
+  { categorie: "Plomberie et Irrigation", nom: "Tubes & tuyaux" },
+  { categorie: "Plomberie et Irrigation", nom: "Coudes" },
+  { categorie: "Plomberie et Irrigation", nom: "Raccords & adaptateurs" },
+  { categorie: "Plomberie et Irrigation", nom: "Vannes & régulation" },
+  { categorie: "Plomberie et Irrigation", nom: "Bouchons & finitions" },
+  { categorie: "Plomberie et Irrigation", nom: "Autres" },
+  { categorie: "Plomberie et Irrigation", nom: "Irrigation & arrosage" },
+  
+  // Pompes
+  { categorie: "Pompes", nom: "Tous" }
+];
+3. IMPORTER LES 337 PRODUITS
+Le CSV complet a été fourni par Michael dans products.csv.
+IMPORTANT :
+Générer les références FP-001 à FP-337 (pas 376)
+Respecter les noms EXACTS des produits (majuscules, accents, DN, etc.)
+Respecter les unités EXACTES (u, m, "Nb de tuyaux 6m", "Rouleau de 100m", "Chute > 50cm", etc.)
+NE PAS créer de prix automatiquement
+Ignorer les colonnes spécifiques au stock (stock_actuel, est_template, etc.)
+MAPPING DES COLONNES CSV → DB :
+categorie → categorieId (via lookup)
+sous_section → sousSectionId (via lookup)
+nom → nom
+unite → uniteMesure
+Générer reference automatiquement (FP-001, FP-002, etc.)
+actif → true par défaut
+description → null (on remplira plus tard)
+4. RÉSULTAT ATTENDU APRÈS SEED
+✅ 9 catégories créées (Clôture, EPI, Electricité, Equipements lourds, Etanchéité, Monolyto, Outillage-Autres, Plomberie et Irrigation, Pompes)
+✅ 18 sous-sections créées
+✅ 337 produits créés avec références FP-001 à FP-337
+❌ 0 prix dans la table prix_fournisseurs
+✅ 4 fournisseurs créés (ABC Matériaux, Dakar Pro BTP, Amadou Matériaux, Marché Sandaga)
+5. SCRIPT DE SEED MODIFIÉ
+import { parse } from 'csv-parse/sync';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
+export async function seedData() {
+  console.log("🚀 Seeding database...");
+  
+  // 1. Créer les catégories
+  const categoriesData = [
+    { nom: "Clôture", description: "Matériel de clôture", ordre: 1 },
+    { nom: "EPI", description: "Équipements de protection individuelle", ordre: 2 },
+    { nom: "Electricité", description: "Équipement électrique", ordre: 3 },
+    { nom: "Equipements lourds", description: "Équipements et machines lourdes", ordre: 4 },
+    { nom: "Etanchéité", description: "Matériaux d'étanchéité", ordre: 5 },
+    { nom: "Monolyto", description: "Produits Monolyto", ordre: 6 },
+    { nom: "Outillage-Autres", description: "Outils et équipements divers", ordre: 7 },
+    { nom: "Plomberie et Irrigation", description: "Matériel de plomberie", ordre: 8 },
+    { nom: "Pompes", description: "Pompes et équipements de pompage", ordre: 9 }
+  ];
+  
+  for (const cat of categoriesData) {
+    await storage.createCategory(cat);
+  }
+  console.log("✅ 9 catégories créées");
+  
+  // 2. Créer les sous-sections
+  const sousSectionsData = [
+    { categorie: "Clôture", nom: "Tous", ordre: 0 },
+    { categorie: "EPI", nom: "Tous", ordre: 0 },
+    { categorie: "Electricité", nom: "Tous", ordre: 0 },
+    { categorie: "Equipements lourds", nom: "Tous", ordre: 0 },
+    { categorie: "Etanchéité", nom: "Géomembranes", ordre: 1 },
+    { categorie: "Etanchéité", nom: "Geotextile", ordre: 2 },
+    { categorie: "Monolyto", nom: "Tous", ordre: 0 },
+    { categorie: "Outillage-Autres", nom: "Outils manuels", ordre: 1 },
+    { categorie: "Outillage-Autres", nom: "Mesure & traçage", ordre: 2 },
+    { categorie: "Outillage-Autres", nom: "Sécurité & signalisation", ordre: 3 },
+    { categorie: "Outillage-Autres", nom: "Équipement & mobilier", ordre: 4 },
+    { categorie: "Plomberie et Irrigation", nom: "Tubes & tuyaux", ordre: 1 },
+    { categorie: "Plomberie et Irrigation", nom: "Coudes", ordre: 2 },
+    { categorie: "Plomberie et Irrigation", nom: "Raccords & adaptateurs", ordre: 3 },
+    { categorie: "Plomberie et Irrigation", nom: "Vannes & régulation", ordre: 4 },
+    { categorie: "Plomberie et Irrigation", nom: "Bouchons & finitions", ordre: 5 },
+    { categorie: "Plomberie et Irrigation", nom: "Autres", ordre: 6 },
+    { categorie: "Plomberie et Irrigation", nom: "Irrigation & arrosage", ordre: 7 },
+    { categorie: "Pompes", nom: "Tous", ordre: 0 }
+  ];
+  
+  const categories = await storage.getAllCategories();
+  const categoriesMap = new Map(categories.map(c => [c.nom, c.id]));
+  
+  for (const ss of sousSectionsData) {
+    const categorieId = categoriesMap.get(ss.categorie);
+    await storage.createSousSection({ 
+      categorieId, 
+      nom: ss.nom, 
+      ordre: ss.ordre 
+    });
+  }
+  console.log("✅ 18 sous-sections créées");
+  
+  // 3. Créer les fournisseurs
+  const fournisseursData = [
+    { nom: "ABC Matériaux", tvaApplicable: true },
+    { nom: "Dakar Pro BTP", tvaApplicable: true },
+    { nom: "Amadou Matériaux", tvaApplicable: false },
+    { nom: "Marché Sandaga", tvaApplicable: false }
+  ];
+  
+  for (const f of fournisseursData) {
+    await storage.createFournisseur(f);
+  }
+  console.log("✅ 4 fournisseurs créés");
+  
+  // 4. Importer les produits depuis le CSV
+  const csvPath = join(process.cwd(), "products.csv");
+  const csvContent = readFileSync(csvPath, "utf-8");
+  const records = parse(csvContent, {
+    columns: true,
+    skip_empty_lines: true,
+    trim: true
+  });
+  
+  const sousSections = await storage.getAllSousSections();
+  const ssMap = new Map();
+  for (const ss of sousSections) {
+    const cat = categories.find(c => c.id === ss.categorieId);
+    ssMap.set(`${cat.nom}|${ss.nom}`, ss.id);
+  }
+  
+  let compteur = 1;
+  const seen = new Set();
+  
+  for (const record of records) {
+    const key = `${record.categorie}|${record.sous_section}|${record.nom}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    
+    const categorieId = categoriesMap.get(record.categorie);
+    const sousSectionId = ssMap.get(`${record.categorie}|${record.sous_section}`);
+    
+    if (!categorieId || !sousSectionId) continue;
+    
+    // Nettoyer l'unité (enlever les "(s)" et autres variations)
+    let unite = record.unite.replace(/\(s\)/g, '').trim();
+    if (unite === 'unité') unite = 'u';
+    if (unite === 'mètre') unite = 'm';
+    
+    const reference = `FP-${compteur.toString().padStart(3, '0')}`;
+    
+    await storage.createProduit({
+      reference,
+      nom: record.nom,
+      categorieId,
+      sousSectionId,
+      uniteMesure: unite,
+      actif: true
+    });
+    
+    compteur++;
+  }
+  
+  console.log(`✅ ${compteur - 1} produits créés avec références FP-001 à FP-${(compteur - 1).toString().padStart(3, '0')}`);
+  
+  // 5. NE PAS créer de prix
+  console.log("✅ Table prix_fournisseurs vide (à saisir manuellement)");
+  
+  console.log("🎉 Seed terminé !");
+}
+6. NOTES IMPORTANTES
+Unités spéciales à gérer :
+"unité(s)" → "u"
+"mètre(s)" → "m"
+"Nb de tuyaux 6m" → conserver tel quel
+"Rouleau de 100m" → conserver tel quel
+"Rouleau de 50m" → conserver tel quel
+"Chute > 50cm" → conserver tel quel
+"Chute > 3m (et inf. à 10m)" → conserver tel quel
+"L" → conserver tel quel
+Gestion des doublons :
+Certains produits apparaissent plusieurs fois avec des unités différentes (ex: "EVAC - DN 110" en "Nb de tuyaux 6m" ET "Chute de moins de 6m").
+→ Ce sont des produits DISTINCTS, les créer tous.
+Nettoyage :
+Supprimer les templates (est_template = true)
+Supprimer les produits inactifs (actif = false)

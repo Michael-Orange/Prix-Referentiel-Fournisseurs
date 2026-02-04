@@ -1,0 +1,145 @@
+🔧 MODIFICATION FORMULAIRE "NOUVEAU PRODUIT"
+
+## AMÉLIORATION À APPORTER :
+
+Ajouter une section optionnelle dans le formulaire "Nouveau produit" pour saisir directement un premier prix fournisseur.
+
+### STRUCTURE DU FORMULAIRE MODIFIÉ :
+
+**Section 1 : Informations produit** (actuelle, à conserver)
+- Nom *
+- Description
+- Catégorie *
+- Sous-section (conditionnel)
+- Unité de mesure *
+- Produit actif (toggle)
+
+**Section 2 : Premier prix fournisseur (NOUVELLE, OPTIONNELLE)**
+
+Ajouter un toggle/checkbox : 
+☐ **"Ajouter un prix fournisseur maintenant"**
+
+Si coché, afficher les champs suivants :
+
+1. **Fournisseur** (Select, obligatoire si section activée)
+   - Liste déroulante avec tous les fournisseurs actifs
+   - Format : "Nom fournisseur" + badge TVA ("TVA 18%" ou "Sans TVA")
+   - Si aucun fournisseur : afficher message "Aucun fournisseur disponible" + bouton "Créer un fournisseur"
+
+2. **Mode de saisie** (Toggle entre 2 options)
+   - Option A : Saisir Prix HT (défaut)
+   - Option B : Saisir Prix TTC
+
+3. **Prix HT (FCFA)** (input nombre, obligatoire si mode A)
+   - Placeholder : "Ex: 7000"
+
+4. **Taux TVA (%)** (input nombre, pré-rempli selon fournisseur sélectionné, modifiable)
+   - Pré-rempli automatiquement : 18% si fournisseur avec TVA, 0% si sans TVA
+   - Modifiable manuellement
+   - Si modifié et différent du profil fournisseur → afficher warning : "⚠️ TVA différente du profil fournisseur"
+
+5. **Prix TTC (FCFA)** (calculé automatiquement ou saisie si mode B)
+   - Si mode A (saisie HT) : champ calculé automatiquement, lecture seule
+   - Si mode B (saisie TTC) : champ saisie, HT calculé automatiquement
+   - Formules : 
+     - TTC = HT × (1 + TVA/100)
+     - HT = TTC / (1 + TVA/100)
+
+6. **Date début validité** (Date picker)
+   - Valeur par défaut : aujourd'hui
+   - Facultatif
+
+7. **Remarques** (Textarea)
+   - Facultatif
+   - Placeholder : "Notes sur ce prix..."
+
+### COMPORTEMENT :
+
+**Si toggle "Ajouter un prix fournisseur maintenant" NON COCHÉ :**
+- Créer uniquement le produit (comportement actuel)
+- Rediriger vers la liste des produits
+
+**Si toggle "Ajouter un prix fournisseur maintenant" COCHÉ :**
+- Valider que le fournisseur est sélectionné
+- Valider que le prix HT (ou TTC selon mode) est saisi
+- Valider la cohérence HT/TVA/TTC
+- Créer le produit
+- Créer le prix fournisseur associé
+- Rediriger vers la fiche détaillée du produit OU afficher un message de succès : "Produit [NOM] créé avec succès (Référence: FP-XXX). Prix fournisseur [FOURNISSEUR] ajouté : [PRIX_HT] FCFA HT / [PRIX_TTC] FCFA TTC"
+
+### VALIDATION :
+
+**Champs obligatoires si section activée :**
+- Fournisseur
+- Prix HT (si mode HT sélectionné) OU Prix TTC (si mode TTC sélectionné)
+- Taux TVA
+
+**Validation cohérence :**
+- Si TVA = 0% : HT = TTC
+- Si TVA = 18% : TTC = HT × 1.18 (tolérance ±0.01 FCFA)
+- Prix HT et TTC > 0
+
+### MESSAGES D'ERREUR :
+
+- "Veuillez sélectionner un fournisseur"
+- "Le prix HT doit être supérieur à 0"
+- "Le prix TTC doit être supérieur à 0"
+- "Le taux de TVA doit être entre 0 et 100"
+- "Les prix HT, TVA et TTC ne sont pas cohérents"
+
+### DESIGN :
+
+- Section "Premier prix fournisseur" avec bordure en pointillés pour indiquer qu'elle est optionnelle
+- Toggle bien visible avec libellé clair
+- Badge TVA du fournisseur visible dans le select
+- Si TVA override : icône warning ⚠️ en orange
+- Champs calculés automatiquement en gris clair (lecture seule)
+
+### EXEMPLE VISUEL ATTENDU :
+┌─────────────────────────────────────────────┐
+│ Nouveau produit                              │
+│ La référence sera générée automatiquement   │
+├─────────────────────────────────────────────┤
+│ Nom *                                        │
+│ [PELLE                                    ]  │
+│                                              │
+│ Description                                  │
+│ [Description optionnelle...              ]  │
+│                                              │
+│ Catégorie *        Sous-section             │
+│ [Outillage-Autres▼] [Outils manuels▼     ]  │
+│                                              │
+│ Unité de mesure *                           │
+│ [u ▼]                                        │
+│                                              │
+│ Produit actif  [●────]                      │
+├─────────────────────────────────────────────┤
+│ ☑ Ajouter un prix fournisseur maintenant    │
+│                                              │
+│ Fournisseur *                               │
+│ [ABC Matériaux [TVA 18%] ▼]                 │
+│                                              │
+│ Mode : (●) Saisir HT  ( ) Saisir TTC        │
+│                                              │
+│ Prix HT (FCFA) *                            │
+│ [7000                                     ]  │
+│                                              │
+│ Taux TVA (%) *                              │
+│ [18.00                                    ]  │
+│                                              │
+│ Prix TTC (FCFA) (calculé)                   │
+│ [8260                                     ]  │
+│                                              │
+│ Date début validité                         │
+│ [04/02/2026 ▼]                              │
+│                                              │
+│ Remarques                                    │
+│ [Notes sur ce prix...                    ]  │
+├─────────────────────────────────────────────┤
+│                        [Annuler] [Créer]    │
+└─────────────────────────────────────────────┘
+✅ BÉNÉFICES DE CETTE AMÉLIORATION
+UX optimisée : Création produit + prix en une seule action
+Moins de clics : Évite d'aller sur la fiche produit puis "Ajouter un prix"
+Facultatif : Si on veut juste créer le produit sans prix, on peut
+Cohérent : Même logique de calcul HT/TTC que dans "Ajouter un prix" sur un produit existant
