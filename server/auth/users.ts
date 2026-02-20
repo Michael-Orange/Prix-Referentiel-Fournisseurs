@@ -13,12 +13,19 @@ function parseUsersFromEnv(): User[] {
     return [];
   }
 
+  const entries = authUsers
+    .split(/[,\n]+/)
+    .map(s => s.trim())
+    .filter(s => s.length > 0 && s.includes('@'));
+
+  console.log(`AUTH_USERS: ${entries.length} entrée(s) détectée(s)`);
+
   const users: User[] = [];
 
-  for (const userStr of authUsers.split(',')) {
-    const parts = userStr.trim().split(':');
+  for (const userStr of entries) {
+    const parts = userStr.split(':');
     if (parts.length < 3) {
-      console.warn(`Format utilisateur invalide (attendu email:password:role): "${userStr.trim()}"`);
+      console.warn(`Format utilisateur invalide (attendu email:password:role): "${userStr}"`);
       continue;
     }
     const email = parts[0].trim();
