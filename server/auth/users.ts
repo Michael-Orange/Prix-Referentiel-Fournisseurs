@@ -13,9 +13,10 @@ function parseUsersFromEnv(): User[] {
     return [];
   }
 
-  const entries = authUsers
+  const cleaned = authUsers.replace(/\\n/g, '\n');
+  const entries = cleaned
     .split(/[,\n]+/)
-    .map(s => s.trim())
+    .map(s => s.replace(/^[:\s]+/, '').trim())
     .filter(s => s.length > 0 && s.includes('@'));
 
   console.log(`AUTH_USERS: ${entries.length} entrée(s) détectée(s)`);

@@ -54,6 +54,8 @@ Preferred communication style: Simple, everyday language.
 │       ├── hooks/       # Custom React hooks (use-toast, use-mobile)
 │       └── lib/         # Utilities (queryClient, utils)
 ├── server/              # Express backend
+│   ├── auth/
+│   │   └── users.ts     # Parse AUTH_USERS secret, user lookup & password verify
 │   ├── routes.ts        # API routes with scope-based middleware
 │   ├── storage.ts       # Data access layer (IStorage interface)
 │   ├── seed.ts          # Database seeding (338 products from CSV)
@@ -65,8 +67,11 @@ Preferred communication style: Simple, everyday language.
 ```
 
 ### Authentication & Authorization
-- Web UI: Password auth via `/api/auth/login`, session stored server-side
-- External API: `x-api-key` header with scope-based access
+- Web UI: Email/password auth via `/api/auth/login`, session stores userEmail/userName/userRole
+- Users defined in AUTH_USERS secret (format: email:password:role, comma-separated)
+- 3 users: Marine (admin), Fatou (utilisateur), Michael (admin)
+- Roles: admin (full access), utilisateur (read + movements only)
+- External API: `x-api-key` header with scope-based access (unchanged)
 - Scopes: `referentiel:read`, `referentiel:write`, `prix:read`, `prix:write`, `stock:write`
 - Routes use `authOrScope()` middleware (accepts either session OR valid API key)
 
@@ -96,7 +101,7 @@ BRS 5%:   prixTtc = null, prixBrs = prixHt / 0.95
 
 ### Environment Variables Required
 - `DATABASE_URL`: PostgreSQL connection string
-- `PASSWORD`: Application password (stored as secret)
+- `AUTH_USERS`: User credentials (format: email:password:role, comma-separated)
 - `SESSION_SECRET`: Session encryption key (stored as secret)
 - `API_KEY`: Default API key for external access
 
@@ -108,6 +113,9 @@ BRS 5%:   prixTtc = null, prixBrs = prixHt / 0.95
 - **zod** + **drizzle-zod**: Runtime schema validation
 
 ## Recent Changes (2026-02-20)
+- Replaced single-password auth with email/password auth (3 users: Marine, Fatou, Michael)
+- Users stored in AUTH_USERS secret, parsed at startup with robust format handling
+- Session stores userEmail/userName/userRole, sidebar shows connected user info
 - Complete schema rewrite: public schema → referentiel + prix PostgreSQL schemas
 - Added 3 fiscal regimes: TVA 18%, Sans TVA, BRS 5% (replaces simple tvaApplicable boolean)
 - Added pg_trgm duplicate detection with normaliserNom() function
