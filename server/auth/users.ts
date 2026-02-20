@@ -1,57 +1,73 @@
-interface User {
-  email: string;
-  password: string;
-  role: 'admin' | 'utilisateur';
-  nom: string;
-}
+import { db } from "../db";
+import { users } from "@shared/schema";
+import { eq, and } from "drizzle-orm";
 
-function parseUsersFromEnv(): User[] {
-  const authUsers = process.env.AUTH_USERS || '';
+function parsePasswordsFromEnv(): Map<string, string> {
+  const raw = process.env.AUTH_PASSWORDS || process.env.AUTH_USERS || '';
 
-  if (!authUsers) {
-    console.warn('AUTH_USERS non défini dans Secrets');
-    return [];
+  if (!raw) {
+    console.warn('AUTH_PASSWORDS non défini dans Secrets');
+    return new Map();
   }
 
-  const cleaned = authUsers.replace(/\\n/g, '\n');
-  const entries = cleaned
-    .split(/[,\n]+/)
-    .map(s => s.replace(/^[:\s]+/, '').trim())
-    .filter(s => s.length > 0 && s.includes('@'));
+  const cleaned = raw.replace(/\\n/g, '\n');
+  const passwordMap = new Map<string, string>();
 
-  console.log(`AUTH_USERS: ${entries.length} entrée(s) détectée(s)`);
+  for (const entry of cleaned.split(/[,\n]+/)) {
+    const trimmed = entry.replace(/^[:\s]+/, '').trim();
+    if (!trimmed || !trimmed.includes('@')) continue;
 
-  const users: User[] = [];
+    const parts = trimmed.split(':');
+    if (parts.length < 2) continue;
 
-  for (const userStr of entries) {
-    const parts = userStr.split(':');
-    if (parts.length < 3) {
-      console.warn(`Format utilisateur invalide (attendu email:password:role): "${userStr}"`);
-      continue;
+    const email = parts[0].trim().toLowerCase();
+    let password: string;
+    if (parts.length === 2) {
+      password = parts[1].trim();
+    } else if (parts.length === 3) {
+      const lastPart = parts[2].trim().toLowerCase();
+      if (lastPart === 'admin' || lastPart === 'utilisateur') {
+        password = parts[1].trim();
+      } else {
+        password = parts.slice(1).join(':').trim();
+      }
+    } else {
+      password = parts.slice(1, parts.length - 1).join(':').trim();
     }
-    const email = parts[0].trim();
-    const role = parts[parts.length - 1].trim();
-    const password = parts.slice(1, parts.length - 1).join(':').trim();
-    const nom = email.split('@')[0];
 
-    users.push({
-      email,
-      password,
-      role: role as 'admin' | 'utilisateur',
-      nom: nom.charAt(0).toUpperCase() + nom.slice(1),
-    });
+    if (email && password) {
+      passwordMap.set(email, password);
+    }
   }
 
-  console.log(`${users.length} utilisateur(s) chargé(s) depuis AUTH_USERS`);
-  return users;
+  console.log(`${passwordMap.size} mot(s) de passe chargé(s) depuis Secrets`);
+  return passwordMap;
 }
 
-export const USERS = parseUsersFromEnv();
+export const PASSWORDS = parsePasswordsFromEnv();
 
-export function findUserByEmail(email: string): User | undefined {
-  return USERS.find(u => u.email.toLowerCase() === email.toLowerCase());
+export function verifyPassword(email: string, password: string): boolean {
+  const stored = PASSWORDS.get(email.toLowerCase());
+  return stored === password;
 }
 
-export function verifyPassword(user: User, password: string): boolean {
-  return user.password === password;
+export async function findUserByEmail(email: string) {
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(
+      and(
+        eq(users.email, email.toLowerCase()),
+        eq(users.actif, true)
+      )
+    )
+    .limit(1);
+  return user || null;
+}
+
+export async function updateLastLogin(userId: number) {
+  await db
+    .update(users)
+    .set({ derniereConnexion: new Date() })
+    .where(eq(users.id, userId));
 }

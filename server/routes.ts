@@ -5,10 +5,11 @@ import { storage } from "./storage";
 import { resetAndReseed } from "./seed";
 import { insertFournisseurSchema, insertProduitMasterSchema, REGIMES_FISCAUX } from "@shared/schema";
 import { z } from "zod";
-import { findUserByEmail, verifyPassword } from "./auth/users";
+import { findUserByEmail, verifyPassword, updateLastLogin } from "./auth/users";
 
 declare module "express-session" {
   interface SessionData {
+    userId: number;
     userEmail: string;
     userName: string;
     userRole: string;
@@ -83,31 +84,43 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     })
   );
 
-  app.post("/api/auth/login", (req, res) => {
+  app.post("/api/auth/login", async (req, res) => {
     const { email, password } = req.body;
     if (!email || !password) {
       return res.status(400).json({ error: "Email et mot de passe requis" });
     }
-    const user = findUserByEmail(email);
-    if (!user || !verifyPassword(user, password)) {
-      return res.status(401).json({ error: "Email ou mot de passe incorrect" });
+    try {
+      const user = await findUserByEmail(email);
+      if (!user || !verifyPassword(email, password)) {
+        return res.status(401).json({ error: "Email ou mot de passe incorrect" });
+      }
+      await updateLastLogin(user.id);
+      req.session.userId = user.id;
+      req.session.userEmail = user.email;
+      req.session.userName = user.nom;
+      req.session.userRole = user.role;
+      res.json({ id: user.id, nom: user.nom, email: user.email, role: user.role });
+    } catch (error) {
+      console.error("Erreur login:", error);
+      res.status(500).json({ error: "Erreur serveur" });
     }
-    req.session.userEmail = user.email;
-    req.session.userName = user.nom;
-    req.session.userRole = user.role;
-    res.json({ nom: user.nom, email: user.email, role: user.role });
   });
 
-  app.get("/api/auth/me", (req, res) => {
+  app.get("/api/auth/me", async (req, res) => {
     if (!req.session?.userEmail) {
       return res.status(401).json({ error: "Non authentifié" });
     }
-    const user = findUserByEmail(req.session.userEmail);
-    if (!user) {
-      req.session.destroy(() => {});
-      return res.status(401).json({ error: "Utilisateur introuvable" });
+    try {
+      const user = await findUserByEmail(req.session.userEmail);
+      if (!user) {
+        req.session.destroy(() => {});
+        return res.status(401).json({ error: "Utilisateur introuvable" });
+      }
+      res.json({ id: user.id, nom: user.nom, email: user.email, role: user.role });
+    } catch (error) {
+      console.error("Erreur /me:", error);
+      res.status(500).json({ error: "Erreur serveur" });
     }
-    res.json({ nom: user.nom, email: user.email, role: user.role });
   });
 
   app.post("/api/auth/logout", (req, res) => {

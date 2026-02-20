@@ -55,7 +55,7 @@ Preferred communication style: Simple, everyday language.
 │       └── lib/         # Utilities (queryClient, utils)
 ├── server/              # Express backend
 │   ├── auth/
-│   │   └── users.ts     # Parse AUTH_USERS secret, user lookup & password verify
+│   │   └── users.ts     # Parse AUTH_PASSWORDS secret, DB user lookup & password verify
 │   ├── routes.ts        # API routes with scope-based middleware
 │   ├── storage.ts       # Data access layer (IStorage interface)
 │   ├── seed.ts          # Database seeding (338 products from CSV)
@@ -67,10 +67,12 @@ Preferred communication style: Simple, everyday language.
 ```
 
 ### Authentication & Authorization
-- Web UI: Email/password auth via `/api/auth/login`, session stores userEmail/userName/userRole
-- Users defined in AUTH_USERS secret (format: email:password:role, comma-separated)
-- 3 users: Marine (admin), Fatou (utilisateur), Michael (admin)
+- Web UI: Email/password auth via `/api/auth/login`, session stores userId/userEmail/userName/userRole
+- User info (nom, email, role, actif, derniere_connexion) stored in PostgreSQL `users` table
+- Passwords stored in AUTH_PASSWORDS (or AUTH_USERS) secret (format: email:password or email:password:role)
+- 3 users seeded at startup: Marine (admin), Fatou (utilisateur), Michael (admin)
 - Roles: admin (full access), utilisateur (read + movements only)
+- Login updates derniere_connexion in users table
 - External API: `x-api-key` header with scope-based access (unchanged)
 - Scopes: `referentiel:read`, `referentiel:write`, `prix:read`, `prix:write`, `stock:write`
 - Routes use `authOrScope()` middleware (accepts either session OR valid API key)

@@ -6,7 +6,18 @@ export async function setupDatabase() {
     await client.query(`CREATE EXTENSION IF NOT EXISTS pg_trgm;`);
     await client.query(`CREATE SCHEMA IF NOT EXISTS referentiel;`);
     await client.query(`CREATE SCHEMA IF NOT EXISTS prix;`);
-    console.log("✅ Schemas referentiel et prix créés, pg_trgm activé");
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        nom TEXT NOT NULL,
+        email TEXT NOT NULL UNIQUE,
+        role TEXT NOT NULL DEFAULT 'utilisateur',
+        actif BOOLEAN NOT NULL DEFAULT true,
+        derniere_connexion TIMESTAMP,
+        date_creation TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
+    console.log("✅ Schemas referentiel et prix créés, table users, pg_trgm activé");
   } finally {
     client.release();
   }

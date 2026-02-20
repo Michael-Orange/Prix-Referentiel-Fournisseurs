@@ -131,6 +131,20 @@ export const apiKeys = prixSchema.table("api_keys", {
 
 export type ApiKey = typeof apiKeys.$inferSelect;
 
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
+  nom: text("nom").notNull(),
+  email: text("email").notNull().unique(),
+  role: text("role").notNull().default("utilisateur"),
+  actif: boolean("actif").notNull().default(true),
+  derniereConnexion: timestamp("derniere_connexion"),
+  dateCreation: timestamp("date_creation").notNull().defaultNow(),
+});
+
+export const insertUserSchema = createInsertSchema(users).omit({ id: true, dateCreation: true });
+export type InsertUser = z.infer<typeof insertUserSchema>;
+export type User = typeof users.$inferSelect;
+
 export type ProduitWithPrixDefaut = ProduitMaster & {
   fournisseurDefaut?: {
     id: number;

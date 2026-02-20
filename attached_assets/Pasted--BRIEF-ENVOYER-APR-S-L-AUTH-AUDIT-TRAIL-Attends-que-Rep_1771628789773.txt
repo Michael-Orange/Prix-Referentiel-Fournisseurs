@@ -1,0 +1,556 @@
+📋 BRIEF À ENVOYER APRÈS L'AUTH : AUDIT TRAIL
+Attends que Replit termine le brief auth, puis envoie celui-ci :
+# BRIEF : Audit Trail - Tracking des Modifications
+
+## 🎯 OBJECTIF
+Enregistrer et afficher qui crée/modifie les produits, prix et mouvements de stock.
+
+## ✅ PRÉ-REQUIS
+
+L'authentification est **DÉJÀ IMPLÉMENTÉE** avec :
+- Table `users` en BDD (nom, email, role)
+- Session avec `req.user` disponible (id, nom, email, role)
+- Middleware `attachUser` qui peuple `req.user` automatiquement
+
+**Ce brief ajoute le tracking "créé par / modifié par".**
+
+---
+
+## 📊 CHAMPS À TRACKER
+
+### Dans FP-Referentiel-Produit (Prix)
+
+#### Table `referentiel.produits_master`
+Les colonnes existent déjà (créées dans Brief 1), il faut juste **les utiliser** :
+- `cree_par` : TEXT (prénom créateur, ex: "Marine")
+- `date_creation` : TIMESTAMP (auto)
+- `date_modification` : TIMESTAMP (auto lors UPDATE)
+
+#### Table `prix.prix_fournisseurs`
+Pareil, colonnes déjà existantes :
+- `cree_par` : TEXT
+- `date_creation` : TIMESTAMP
+- `date_modification` : TIMESTAMP
+
+#### Table `prix.historique_prix`
+Colonne déjà existante :
+- `modifie_par` : TEXT (qui a modifié le prix)
+- `date_modification` : TIMESTAMP
+
+### Dans GestionStockFP (Stock)
+
+#### Table `movements`
+Colonne déjà existante :
+- `utilisateur_id` : INTEGER (FK vers users) → déjà utilisée normalement
+
+Si besoin d'ajouter un champ textuel "créé par" :
+```sql
+ALTER TABLE movements ADD COLUMN IF NOT EXISTS cree_par TEXT;
+```
+
+Mais si `utilisateur_id` existe déjà, c'est suffisant (on peut JOIN avec `users.nom`).
+
+---
+
+## 🛠️ IMPLÉMENTATION
+
+### Dans FP-Referentiel-Produit
+
+#### Route : POST /api/referentiel/produits (création)
+
+Modifier pour utiliser `creePar` :
+```typescript
+app.post('/api/referentiel/produits', requireAuth, async (req, res) => {
+  const { nom, categorie, unite, estStockable, ... } = req.body;
+  
+  const nomNormalise = normaliserNom(nom);
+  
+  const [produit] = await db.insert(produitsMaster).values({
+    nom,
+    nomNormalise,
+    categorie,
+    unite,
+    estStockable: estStockable || false,
+    sourceApp: 'prix',
+    creePar: req.user?.nom || 'Système', // ← ICI : "Marine", "Fatou", "Michael"
+    actif: true,
+  }).returning();
+  
+  res.status(201).json(produit);
+});
+```
+
+#### Route : PATCH /api/referentiel/produits/:id (modification)
+
+Mettre à jour `dateModification` automatiquement :
+```typescript
+app.patch('/api/referentiel/produits/:id', requireAuth, async (req, res) => {
+  const { id } = req.params;
+  const updates = req.body;
+  
+  const [produit] = await db
+    .update(produitsMaster)
+    .set({
+      ...updates,
+      dateModification: new Date(), // ← Auto
+    })
+    .where(eq(produitsMaster.id, parseInt(id)))
+    .returning();
+  
+  res.json(produit);
+});
+```
+
+#### Route : POST /api/prix/produits/:id/fournisseurs (création prix)
+
+```typescript
+app.post('/api/prix/produits/:id/fournisseurs', requireAuth, async (req, res) => {
+  const { id: produitId } = req.params;
+  const { fournisseurId, prixHt, regimeFiscal, ... } = req.body;
+  
+  // Calculer prix TTC/BRS
+  const { prixTtc, prixBrs } = calculerPrix(prixHt, regimeFiscal);
+  
+  const [prix] = await db.insert(prixFournisseurs).values({
+    produitMasterId: parseInt(produitId),
+    fournisseurId,
+    prixHt,
+    regimeFiscal,
+    prixTtc,
+    prixBrs,
+    creePar: req.user?.nom || 'Système', // ← ICI
+    actif: true,
+  }).returning();
+  
+  res.status(201).json(prix);
+});
+```
+
+#### Route : PATCH /api/prix/fournisseurs/:id (modification prix)
+
+Le trigger PostgreSQL enregistrera automatiquement dans `historique_prix`, mais on doit lui passer le nom de l'utilisateur.
+
+**Méthode : Variable de session PostgreSQL**
+
+Créer `server/middleware/setPgUser.ts` :
+```typescript
+import { Request, Response, NextFunction } from 'express';
+import { db } from '../db';
+import { sql } from 'drizzle-orm';
+
+export async function setPgUser(req: Request, res: Response, next: NextFunction) {
+  if (!req.user) {
+    return next();
+  }
+  
+  try {
+    // Définir une variable de session PostgreSQL
+    await db.execute(sql`SET LOCAL app.current_user = ${req.user.nom}`);
+  } catch (error) {
+    console.error('Erreur setPgUser:', error);
+    // Continuer même en cas d'erreur
+  }
+  
+  next();
+}
+```
+
+Utiliser ce middleware pour les routes de modification prix :
+```typescript
+import { setPgUser } from './middleware/setPgUser';
+
+app.patch('/api/prix/fournisseurs/:id', requireAuth, setPgUser, async (req, res) => {
+  const { id } = req.params;
+  const { prixHt, regimeFiscal } = req.body;
+  
+  const { prixTtc, prixBrs } = calculerPrix(prixHt, regimeFiscal);
+  
+  const [prix] = await db
+    .update(prixFournisseurs)
+    .set({
+      prixHt,
+      regimeFiscal,
+      prixTtc,
+      prixBrs,
+      dateModification: new Date(),
+    })
+    .where(eq(prixFournisseurs.id, parseInt(id)))
+    .returning();
+  
+  // Le trigger enregistrera automatiquement dans historique_prix
+  // avec modifie_par = current_setting('app.current_user')
+  
+  res.json(prix);
+});
+```
+
+#### Modifier le trigger PostgreSQL historique_prix
+
+Enrichir le trigger pour récupérer le nom depuis la variable de session :
+```sql
+CREATE OR REPLACE FUNCTION enregistrer_historique_prix()
+RETURNS TRIGGER AS $$
+DECLARE
+  current_user_name TEXT;
+BEGIN
+  -- Récupérer le nom de l'utilisateur depuis la variable de session
+  BEGIN
+    current_user_name := current_setting('app.current_user', true);
+  EXCEPTION
+    WHEN OTHERS THEN
+      current_user_name := 'Système';
+  END;
+  
+  -- Si prix ou régime changé → enregistrer dans historique
+  IF OLD.prix_ht IS DISTINCT FROM NEW.prix_ht 
+     OR OLD.regime_fiscal IS DISTINCT FROM NEW.regime_fiscal THEN
+    INSERT INTO prix.historique_prix (
+      prix_fournisseur_id,
+      prix_ht_ancien,
+      prix_ht_nouveau,
+      regime_fiscal_ancien,
+      regime_fiscal_nouveau,
+      modifie_par,
+      date_modification
+    ) VALUES (
+      NEW.id,
+      OLD.prix_ht,
+      NEW.prix_ht,
+      OLD.regime_fiscal,
+      NEW.regime_fiscal,
+      current_user_name, -- ← ICI
+      NOW()
+    );
+  END IF;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Recréer le trigger (si pas déjà fait)
+DROP TRIGGER IF EXISTS trigger_historique_prix ON prix.prix_fournisseurs;
+CREATE TRIGGER trigger_historique_prix
+AFTER UPDATE ON prix.prix_fournisseurs
+FOR EACH ROW
+EXECUTE FUNCTION enregistrer_historique_prix();
+```
+
+---
+
+### Dans GestionStockFP (Stock)
+
+#### Route : POST /api/movements (prendre/rendre matériel)
+
+Si la colonne `utilisateur_id` existe déjà dans `movements`, l'utiliser :
+```typescript
+app.post('/api/movements', requireAuth, async (req, res) => {
+  const { produitId, quantite, type, dateRetourPrevu, ... } = req.body;
+  
+  const [movement] = await db.insert(movements).values({
+    produitId: parseInt(produitId),
+    quantite,
+    type, // "pret", "consommation", "retour", "depot"
+    statut: 'en_cours',
+    utilisateurId: req.user?.id, // ← ICI : ID user
+    dateRetourPrevu: dateRetourPrevu ? new Date(dateRetourPrevu) : null,
+    date: new Date(),
+  }).returning();
+  
+  res.status(201).json(movement);
+});
+```
+
+Si tu veux aussi le prénom en texte (optionnel) :
+```typescript
+// Ajouter colonne si pas déjà présente
+ALTER TABLE movements ADD COLUMN IF NOT EXISTS cree_par TEXT;
+
+// Dans le INSERT
+const [movement] = await db.insert(movements).values({
+  // ... autres champs
+  utilisateurId: req.user?.id,
+  creePar: req.user?.nom, // ← Optionnel
+}).returning();
+```
+
+---
+
+## 🎨 AFFICHAGE DANS L'UI
+
+### 1. Liste produits : Colonne "Créé par"
+
+Dans `client/src/pages/ProduitsPage.tsx` (FP-Referentiel-Produit) :
+```tsx
+<Table>
+  <TableHeader>
+    <TableRow>
+      <TableHead>Produit</TableHead>
+      <TableHead>Catégorie</TableHead>
+      <TableHead>Unité</TableHead>
+      <TableHead>Créé par</TableHead> {/* ← NOUVEAU */}
+      <TableHead>Date création</TableHead>
+      <TableHead>Actions</TableHead>
+    </TableRow>
+  </TableHeader>
+  <TableBody>
+    {produits.map((p) => (
+      <TableRow key={p.id}>
+        <TableCell className="font-medium">{p.nom}</TableCell>
+        <TableCell>{p.categorie}</TableCell>
+        <TableCell>{p.unite}</TableCell>
+        <TableCell className="text-gray-600">
+          {p.creePar || '-'} {/* ← AFFICHAGE */}
+        </TableCell>
+        <TableCell>{formatDate(p.dateCreation)}</TableCell>
+        <TableCell>
+          {/* Actions */}
+        </TableCell>
+      </TableRow>
+    ))}
+  </TableBody>
+</Table>
+```
+
+### 2. Détail produit : Section Audit
+
+Dans le panneau détail produit (modal ou page) :
+```tsx
+<div className="mt-6 pt-4 border-t border-gray-200">
+  <h3 className="text-sm font-medium text-gray-700 mb-2">Informations de suivi</h3>
+  <div className="text-sm text-gray-500 space-y-1">
+    <p>
+      Créé par <span className="font-medium text-gray-900">{produit.creePar || 'Inconnu'}</span>
+      {' '}le {formatDate(produit.dateCreation)}
+    </p>
+    {produit.dateModification && (
+      <p>
+        Dernière modification : {formatDate(produit.dateModification)}
+      </p>
+    )}
+  </div>
+</div>
+```
+
+### 3. Historique prix : Afficher "Par X"
+
+Dans `client/src/components/HistoriquePrixModal.tsx` :
+```tsx
+{historique.map((h) => (
+  <div key={h.id} className="flex items-start space-x-3 pb-4">
+    <div className="flex-shrink-0">
+      <div className="w-2 h-2 bg-teal-500 rounded-full mt-2"></div>
+    </div>
+    <div className="flex-1">
+      <div className="text-sm text-gray-500">
+        {formatDate(h.dateModification)}
+      </div>
+      <div className="font-medium text-gray-900 mt-1">
+        Prix HT : {h.prixHtAncien} FCFA → {h.prixHtNouveau} FCFA
+      </div>
+      {h.regimeFiscalAncien !== h.regimeFiscalNouveau && (
+        <div className="text-sm text-gray-600">
+          Régime : {h.regimeFiscalAncien} → {h.regimeFiscalNouveau}
+        </div>
+      )}
+      <div className="text-sm text-teal-600 mt-1">
+        Par {h.modifiePar || 'Inconnu'} {/* ← ICI */}
+      </div>
+    </div>
+  </div>
+))}
+```
+
+### 4. Liste mouvements : Afficher nom utilisateur
+
+Dans `client/src/pages/MovementsPage.tsx` (GestionStockFP) :
+
+Si tu as `utilisateur_id`, faire un JOIN avec `users` côté backend :
+```typescript
+// Backend : GET /api/movements
+app.get('/api/movements', requireAuth, async (req, res) => {
+  const mouvements = await db
+    .select({
+      id: movements.id,
+      date: movements.date,
+      type: movements.type,
+      quantite: movements.quantite,
+      produitNom: products.nom,
+      utilisateurNom: users.nom, // ← JOIN
+    })
+    .from(movements)
+    .leftJoin(products, eq(movements.produitId, products.id))
+    .leftJoin(users, eq(movements.utilisateurId, users.id))
+    .orderBy(desc(movements.date));
+  
+  res.json(mouvements);
+});
+```
+
+Frontend :
+```tsx
+<Table>
+  <TableHeader>
+    <TableRow>
+      <TableHead>Date</TableHead>
+      <TableHead>Produit</TableHead>
+      <TableHead>Type</TableHead>
+      <TableHead>Quantité</TableHead>
+      <TableHead>Par</TableHead> {/* ← NOUVEAU */}
+    </TableRow>
+  </TableHeader>
+  <TableBody>
+    {mouvements.map((m) => (
+      <TableRow key={m.id}>
+        <TableCell>{formatDate(m.date)}</TableCell>
+        <TableCell>{m.produitNom}</TableCell>
+        <TableCell>
+          <Badge>{m.type}</Badge>
+        </TableCell>
+        <TableCell>{m.quantite}</TableCell>
+        <TableCell className="text-gray-600">
+          {m.utilisateurNom || '-'} {/* ← AFFICHAGE */}
+        </TableCell>
+      </TableRow>
+    ))}
+  </TableBody>
+</Table>
+```
+
+---
+
+## 🎨 EXEMPLES VISUELS
+
+### Liste produits
+```
+┌───────────────────┬──────────────┬─────────┬──────────┬──────────────┐
+│ Produit           │ Catégorie    │ Unité   │ Créé par │ Date         │
+├───────────────────┼──────────────┼─────────┼──────────┼──────────────┤
+│ Tuyau PVC DN63    │ Plomberie    │ mètre(s)│ Marine   │ 12/01/2026   │
+│ Bouteille diluant │ Clotûre      │ unité(s)│ Fatou    │ 15/01/2026   │
+│ Clôture 120       │ Clotûre      │ mètre(s)│ Michael  │ 18/02/2026   │
+└───────────────────┴──────────────┴─────────┴──────────┴──────────────┘
+```
+
+### Détail produit - Section Audit
+```
+┌─────────────────────────────────────────┐
+│ Tuyau PVC PN10 DN63                     │
+├─────────────────────────────────────────┤
+│ Catégorie : Plomberie-Tuyauterie        │
+│ Unité : mètre(s)                        │
+│ Stockable : Oui                         │
+│                                         │
+│ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ │
+│ Informations de suivi                   │
+│ Créé par Marine le 12/01/2026           │
+│ Dernière modification : 18/02/2026      │
+└─────────────────────────────────────────┘
+```
+
+### Historique prix
+```
+📅 20/02/2026 14:30
+   Prix HT : 4 500 FCFA → 5 000 FCFA
+   Régime : TVA 18% (inchangé)
+   Par Marine
+
+📅 15/01/2026 10:15
+   Prix HT : 4 000 FCFA → 4 500 FCFA
+   Régime : Sans TVA → TVA 18%
+   Par Michael
+```
+
+### Liste mouvements
+```
+┌──────────────┬─────────────────┬─────────────┬──────────┬─────────┐
+│ Date         │ Produit         │ Type        │ Quantité │ Par     │
+├──────────────┼─────────────────┼─────────────┼──────────┼─────────┤
+│ 18/02 14:30  │ Tuyau PVC DN63  │ Prêt        │ 5        │ Fatou   │
+│ 18/02 10:15  │ Clôture 120     │ Consommation│ 2        │ Marine  │
+│ 17/02 16:45  │ Bouteille dilua │ Retour      │ 3        │ Michael │
+└──────────────┴─────────────────┴─────────────┴──────────┴─────────┘
+```
+
+---
+
+## ✅ CHECKLIST DE VALIDATION
+
+### Backend - FP-Referentiel-Produit
+- [ ] POST /api/referentiel/produits enregistre `creePar` avec `req.user.nom`
+- [ ] PATCH /api/referentiel/produits met à jour `dateModification`
+- [ ] POST /api/prix/produits/:id/fournisseurs enregistre `creePar`
+- [ ] PATCH /api/prix/fournisseurs/:id utilise middleware `setPgUser`
+- [ ] Trigger PostgreSQL enregistre `modifiePar` dans historique_prix
+- [ ] Vérifier en BDD : `SELECT cree_par FROM referentiel.produits_master`
+
+### Backend - GestionStockFP
+- [ ] POST /api/movements enregistre `utilisateurId` avec `req.user.id`
+- [ ] GET /api/movements fait JOIN avec users pour récupérer le nom
+- [ ] Vérifier en BDD : `SELECT utilisateur_id FROM movements`
+
+### Frontend - FP-Referentiel-Produit
+- [ ] Liste produits affiche colonne "Créé par"
+- [ ] Détail produit affiche section "Informations de suivi"
+- [ ] Historique prix affiche "Par X" pour chaque modification
+
+### Frontend - GestionStockFP
+- [ ] Liste mouvements affiche colonne "Par"
+- [ ] Nom utilisateur correct (JOIN avec users)
+
+### Tests complets
+- [ ] Login avec Marine → créer produit "Test Marine"
+  - → En BDD : `cree_par = 'Marine'`
+- [ ] Login avec Fatou → créer prix pour un produit
+  - → En BDD : `cree_par = 'Fatou'`
+- [ ] Login avec Michael → modifier un prix
+  - → Historique : `modifie_par = 'Michael'`
+- [ ] Login avec Marine → prendre du matériel (mouvement prêt)
+  - → En BDD : `utilisateur_id = <id_marine>`
+  - → Liste mouvements affiche "Par Marine"
+
+---
+
+## 🚀 ORDRE D'IMPLÉMENTATION
+
+**1. FP-Referentiel-Produit d'abord** (2-3h)
+   - Middleware `setPgUser`
+   - Routes utilisant `creePar` et `dateModification`
+   - Trigger PostgreSQL enrichi
+   - UI : colonnes et sections audit
+
+**2. GestionStockFP ensuite** (1h)
+   - Vérifier que `utilisateurId` est bien utilisé dans mouvements
+   - JOIN avec users dans GET /api/movements
+   - UI : colonne "Par" dans liste mouvements
+
+---
+
+## 📝 NOTES
+
+### Fallback "Système"
+Si `req.user` n'existe pas (ne devrait jamais arriver avec `requireAuth`), utiliser "Système" :
+```typescript
+creePar: req.user?.nom || 'Système'
+```
+
+### Format d'affichage des dates
+Utiliser une fonction helper pour formater :
+```typescript
+function formatDate(date: string | Date): string {
+  return new Date(date).toLocaleDateString('fr-FR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+```
+
+### Données existantes
+Les produits/prix/mouvements créés AVANT ce brief auront `cree_par = null`.
+C'est OK, afficher "-" ou "Inconnu" dans l'UI.
+
+### Performance
+Les JOINs avec `users` sont peu coûteux (table petite, 3 users).
+Pas besoin de cache spécifique.
