@@ -5,21 +5,32 @@ import { storage } from "./storage";
 import { resetAndReseed } from "./seed";
 import { insertFournisseurSchema, insertProduitMasterSchema, REGIMES_FISCAUX } from "@shared/schema";
 import { z } from "zod";
+import { findUserByEmail, verifyPassword } from "./auth/users";
 
 declare module "express-session" {
   interface SessionData {
-    authenticated: boolean;
+    userEmail: string;
+    userName: string;
+    userRole: string;
   }
 }
 
-const PASSWORD = process.env.PASSWORD || "filtreplante2024";
-
 function requireAuth(req: Request, res: Response, next: NextFunction) {
-  if (req.session?.authenticated) {
+  if (req.session?.userEmail) {
     next();
   } else {
     res.status(401).json({ error: "Non authentifié" });
   }
+}
+
+function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  if (!req.session?.userEmail) {
+    return res.status(401).json({ error: "Non authentifié" });
+  }
+  if (req.session.userRole !== "admin") {
+    return res.status(403).json({ error: "Accès admin requis" });
+  }
+  next();
 }
 
 function requireScope(scope: string) {
@@ -42,7 +53,7 @@ function requireScope(scope: string) {
 
 function authOrScope(scope: string) {
   return async (req: Request, res: Response, next: NextFunction) => {
-    if (req.session?.authenticated) {
+    if (req.session?.userEmail) {
       return next();
     }
     const apiKeyHeader = req.headers["x-api-key"] as string | undefined;
@@ -66,31 +77,42 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       cookie: {
         secure: process.env.NODE_ENV === "production",
         httpOnly: true,
-        maxAge: 24 * 60 * 60 * 1000,
+        maxAge: 30 * 24 * 60 * 60 * 1000,
+        sameSite: "lax",
       },
     })
   );
 
-  app.get("/api/auth/check", (req, res) => {
-    if (req.session?.authenticated) {
-      res.json({ authenticated: true });
-    } else {
-      res.status(401).json({ authenticated: false });
+  app.post("/api/auth/login", (req, res) => {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email et mot de passe requis" });
     }
+    const user = findUserByEmail(email);
+    if (!user || !verifyPassword(user, password)) {
+      return res.status(401).json({ error: "Email ou mot de passe incorrect" });
+    }
+    req.session.userEmail = user.email;
+    req.session.userName = user.nom;
+    req.session.userRole = user.role;
+    res.json({ nom: user.nom, email: user.email, role: user.role });
   });
 
-  app.post("/api/auth/login", (req, res) => {
-    const { password } = req.body;
-    if (password === PASSWORD) {
-      req.session.authenticated = true;
-      res.json({ success: true });
-    } else {
-      res.status(401).json({ error: "Mot de passe incorrect" });
+  app.get("/api/auth/me", (req, res) => {
+    if (!req.session?.userEmail) {
+      return res.status(401).json({ error: "Non authentifié" });
     }
+    const user = findUserByEmail(req.session.userEmail);
+    if (!user) {
+      req.session.destroy(() => {});
+      return res.status(401).json({ error: "Utilisateur introuvable" });
+    }
+    res.json({ nom: user.nom, email: user.email, role: user.role });
   });
 
   app.post("/api/auth/logout", (req, res) => {
     req.session.destroy(() => {
+      res.clearCookie("connect.sid");
       res.json({ success: true });
     });
   });

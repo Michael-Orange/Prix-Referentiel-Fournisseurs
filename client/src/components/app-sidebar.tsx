@@ -17,9 +17,11 @@ import {
   FolderTree, 
   Package, 
   History,
-  LogOut
+  LogOut,
+  User
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import type { AuthUser } from "@/pages/login";
 
 const menuItems = [
   {
@@ -50,10 +52,11 @@ const menuItems = [
 ];
 
 interface AppSidebarProps {
+  user: AuthUser;
   onLogout?: () => void;
 }
 
-export function AppSidebar({ onLogout }: AppSidebarProps) {
+export function AppSidebar({ user, onLogout }: AppSidebarProps) {
   const [location] = useLocation();
 
   return (
@@ -96,8 +99,17 @@ export function AppSidebar({ onLogout }: AppSidebarProps) {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      {onLogout && (
-        <SidebarFooter className="border-t border-sidebar-border p-4">
+      <SidebarFooter className="border-t border-sidebar-border p-4 space-y-3">
+        <div className="flex items-center gap-3" data-testid="text-user-info">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
+            <User className="h-4 w-4 text-muted-foreground" />
+          </div>
+          <div className="flex flex-col min-w-0">
+            <span className="text-sm font-medium truncate" data-testid="text-user-name">{user.nom}</span>
+            <span className="text-xs text-muted-foreground capitalize" data-testid="text-user-role">{user.role}</span>
+          </div>
+        </div>
+        {onLogout && (
           <Button 
             variant="ghost" 
             className="w-full justify-start gap-2"
@@ -107,8 +119,8 @@ export function AppSidebar({ onLogout }: AppSidebarProps) {
             <LogOut className="h-4 w-4" />
             Déconnexion
           </Button>
-        </SidebarFooter>
-      )}
+        )}
+      </SidebarFooter>
     </Sidebar>
   );
 }

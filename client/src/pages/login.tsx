@@ -4,34 +4,41 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Lock } from "lucide-react";
+import { Loader2, Lock, Mail } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 
+export interface AuthUser {
+  nom: string;
+  email: string;
+  role: string;
+}
+
 interface LoginProps {
-  onLogin: () => void;
+  onLogin: (user: AuthUser) => void;
 }
 
 export default function Login({ onLogin }: LoginProps) {
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const { toast } = useToast();
 
   const loginMutation = useMutation({
-    mutationFn: async (password: string) => {
-      const response = await apiRequest("POST", "/api/auth/login", { password });
-      return response;
+    mutationFn: async (credentials: { email: string; password: string }) => {
+      const response = await apiRequest("POST", "/api/auth/login", credentials);
+      return response.json() as Promise<AuthUser>;
     },
-    onSuccess: () => {
+    onSuccess: (user) => {
       toast({
         title: "Connexion réussie",
-        description: "Bienvenue dans le référentiel prix",
+        description: `Bienvenue ${user.nom}`,
       });
-      onLogin();
+      onLogin(user);
     },
     onError: () => {
       toast({
         title: "Erreur de connexion",
-        description: "Mot de passe incorrect",
+        description: "Email ou mot de passe incorrect",
         variant: "destructive",
       });
     },
@@ -39,8 +46,8 @@ export default function Login({ onLogin }: LoginProps) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (password.trim()) {
-      loginMutation.mutate(password);
+    if (email.trim() && password.trim()) {
+      loginMutation.mutate({ email, password });
     }
   };
 
@@ -59,6 +66,22 @@ export default function Login({ onLogin }: LoginProps) {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="email@filtreplante.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="pl-9"
+                  autoComplete="email"
+                  data-testid="input-email"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="password">Mot de passe</Label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -74,10 +97,10 @@ export default function Login({ onLogin }: LoginProps) {
                 />
               </div>
             </div>
-            <Button 
-              type="submit" 
+            <Button
+              type="submit"
               className="w-full"
-              disabled={loginMutation.isPending || !password.trim()}
+              disabled={loginMutation.isPending || !email.trim() || !password.trim()}
               data-testid="button-login"
             >
               {loginMutation.isPending ? (

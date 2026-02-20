@@ -7,7 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import NotFound from "@/pages/not-found";
-import Login from "@/pages/login";
+import Login, { type AuthUser } from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
 import Fournisseurs from "@/pages/fournisseurs";
 import Categories from "@/pages/categories";
@@ -27,7 +27,7 @@ function Router() {
   );
 }
 
-function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
+function AuthenticatedApp({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
   const style = {
     "--sidebar-width": "16rem",
     "--sidebar-width-icon": "3rem",
@@ -36,7 +36,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
   return (
     <SidebarProvider style={style as React.CSSProperties}>
       <div className="flex h-screen w-full">
-        <AppSidebar onLogout={onLogout} />
+        <AppSidebar user={user} onLogout={onLogout} />
         <div className="flex flex-col flex-1 overflow-hidden">
           <header className="flex items-center gap-2 p-3 border-b bg-card">
             <SidebarTrigger data-testid="button-sidebar-toggle" />
@@ -54,31 +54,31 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
 }
 
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [user, setUser] = useState<AuthUser | null | undefined>(undefined);
 
   useEffect(() => {
-    fetch("/api/auth/check", { credentials: "include" })
+    fetch("/api/auth/me", { credentials: "include" })
       .then((res) => {
-        setIsAuthenticated(res.ok);
+        if (res.ok) return res.json();
+        throw new Error("Not authenticated");
       })
-      .catch(() => {
-        setIsAuthenticated(false);
-      });
+      .then((data: AuthUser) => setUser(data))
+      .catch(() => setUser(null));
   }, []);
 
-  const handleLogin = () => {
-    setIsAuthenticated(true);
+  const handleLogin = (authUser: AuthUser) => {
+    setUser(authUser);
   };
 
   const handleLogout = () => {
     fetch("/api/auth/logout", { method: "POST", credentials: "include" })
       .then(() => {
-        setIsAuthenticated(false);
+        setUser(null);
         queryClient.clear();
       });
   };
 
-  if (isAuthenticated === null) {
+  if (user === undefined) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="animate-pulse text-muted-foreground">Chargement...</div>
@@ -90,8 +90,8 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
-        {isAuthenticated ? (
-          <AuthenticatedApp onLogout={handleLogout} />
+        {user ? (
+          <AuthenticatedApp user={user} onLogout={handleLogout} />
         ) : (
           <Login onLogin={handleLogin} />
         )}
