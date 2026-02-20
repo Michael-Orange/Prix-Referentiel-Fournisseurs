@@ -35,6 +35,7 @@ export default function Historique() {
                 <li>Prix HT ancien et nouveau</li>
                 <li>Régime fiscal ancien et nouveau</li>
                 <li>Date de modification</li>
+                <li>Utilisateur ayant effectué la modification</li>
                 <li>Raison de la modification (si renseignée)</li>
               </ul>
             </div>

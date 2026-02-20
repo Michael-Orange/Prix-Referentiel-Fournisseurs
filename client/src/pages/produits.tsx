@@ -34,7 +34,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { formatFCFA, formatDate } from "@/lib/utils";
+import { formatFCFA, formatDate, formatDateTime } from "@/lib/utils";
 import {
   Plus,
   Package,
@@ -46,6 +46,7 @@ import {
   AlertTriangle,
   ArrowRight,
   Pencil,
+  User,
 } from "lucide-react";
 import type {
   ProduitWithPrixDefaut,
@@ -303,6 +304,15 @@ export default function Produits() {
           </span>
         );
       },
+    },
+    {
+      key: "creePar",
+      header: "Créé par",
+      render: (p: ProduitWithPrixDefaut) => (
+        <span className="text-sm text-muted-foreground" data-testid={`text-creepar-${p.id}`}>
+          {p.creePar || '-'}
+        </span>
+      ),
     },
     {
       key: "actions",
@@ -616,7 +626,12 @@ export default function Produits() {
                     )}
                     <RegimeBadge regime={h.regimeFiscalNouveau} size="sm" />
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">{formatDate(h.dateModification)}</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-xs text-muted-foreground">{formatDateTime(h.dateModification)}</span>
+                    {h.modifiePar && (
+                      <span className="text-xs text-primary font-medium" data-testid={`text-history-par-${h.id}`}>Par {h.modifiePar}</span>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -652,6 +667,24 @@ export default function Produits() {
                 <Label htmlFor="stockable-toggle" className="cursor-pointer text-sm">
                   Produit stockable
                 </Label>
+              </div>
+
+              <div className="pt-3 border-t" data-testid="section-audit-info">
+                <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
+                  <User className="h-3.5 w-3.5" />
+                  Informations de suivi
+                </h3>
+                <div className="text-sm space-y-1">
+                  <p>
+                    Créé par <span className="font-medium" data-testid="text-detail-creepar">{selectedProduct.creePar || 'Inconnu'}</span>
+                    {' '}le {formatDateTime(selectedProduct.dateCreation)}
+                  </p>
+                  {selectedProduct.dateModification && selectedProduct.dateModification !== selectedProduct.dateCreation && (
+                    <p className="text-muted-foreground">
+                      Dernière modification : {formatDateTime(selectedProduct.dateModification)}
+                    </p>
+                  )}
+                </div>
               </div>
 
               <div>
@@ -695,6 +728,11 @@ export default function Produits() {
                               {pf.prixBrs && <div className="text-xs text-muted-foreground">{formatFCFA(pf.prixBrs)} BRS</div>}
                             </div>
                           </div>
+                          {pf.creePar && (
+                            <p className="text-xs text-muted-foreground mt-1" data-testid={`text-prix-creepar-${pf.id}`}>
+                              Créé par {pf.creePar} le {formatDateTime(pf.dateCreation)}
+                            </p>
+                          )}
                           <div className="flex items-center gap-1 mt-2">
                             {!pf.estFournisseurDefaut && (
                               <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setDefaultMutation.mutate(pf.id)} data-testid={`button-set-default-${pf.id}`}>

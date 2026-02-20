@@ -29,14 +29,28 @@ export async function createTrigger() {
     await client.query(`
       CREATE OR REPLACE FUNCTION prix.enregistrer_historique_prix()
       RETURNS TRIGGER AS $$
+      DECLARE
+        current_user_name TEXT;
       BEGIN
-        IF OLD.prix_ht != NEW.prix_ht OR OLD.regime_fiscal != NEW.regime_fiscal THEN
+        BEGIN
+          current_user_name := current_setting('app.modifier_name', true);
+        EXCEPTION
+          WHEN OTHERS THEN
+            current_user_name := 'Système';
+        END;
+
+        IF current_user_name IS NULL OR current_user_name = '' THEN
+          current_user_name := 'Système';
+        END IF;
+
+        IF OLD.prix_ht IS DISTINCT FROM NEW.prix_ht OR OLD.regime_fiscal IS DISTINCT FROM NEW.regime_fiscal THEN
           INSERT INTO prix.historique_prix (
             prix_fournisseur_id,
             prix_ht_ancien,
             prix_ht_nouveau,
             regime_fiscal_ancien,
             regime_fiscal_nouveau,
+            modifie_par,
             date_modification
           ) VALUES (
             NEW.id,
@@ -44,6 +58,7 @@ export async function createTrigger() {
             NEW.prix_ht,
             OLD.regime_fiscal,
             NEW.regime_fiscal,
+            current_user_name,
             NOW()
           );
         END IF;

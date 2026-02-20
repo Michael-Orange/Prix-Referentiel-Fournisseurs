@@ -125,3 +125,6 @@ BRS 5%:   prixTtc = null, prixBrs = prixHt / 0.95
 - Added price history trigger (PostgreSQL, not application-level)
 - Added API key authentication with scopes for multi-app integration
 - Rewrote all frontend pages for new data model
+- Audit trail: creePar populated from session user on product/price creation
+- Audit trail: PostgreSQL trigger records modifiePar via set_config('app.modifier_name') session variable
+- Audit trail: UI shows "Créé par" column in product list, audit section in detail sheet, "Par X" in price history

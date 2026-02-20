@@ -43,7 +43,7 @@ export interface IStorage {
 
   getPrixProduit(produitId: number): Promise<(PrixFournisseur & { fournisseur: Fournisseur })[]>;
   ajouterPrixFournisseur(data: { produitMasterId: number; fournisseurId: number; prixHt: number; regimeFiscal: string; estFournisseurDefaut?: boolean; creePar?: string }): Promise<PrixFournisseur>;
-  updatePrix(id: number, data: { prixHt?: number; regimeFiscal?: string; creePar?: string }): Promise<PrixFournisseur | undefined>;
+  updatePrix(id: number, data: { prixHt?: number; regimeFiscal?: string }, userName?: string): Promise<PrixFournisseur | undefined>;
   definirFournisseurDefaut(produitId: number, prixFournisseurId: number): Promise<void>;
   retirerFournisseurDefaut(prixFournisseurId: number): Promise<void>;
 
@@ -305,7 +305,7 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async updatePrix(id: number, data: { prixHt?: number; regimeFiscal?: string; creePar?: string }): Promise<PrixFournisseur | undefined> {
+  async updatePrix(id: number, data: { prixHt?: number; regimeFiscal?: string }, userName?: string): Promise<PrixFournisseur | undefined> {
     const [existing] = await db.select().from(prixFournisseurs).where(eq(prixFournisseurs.id, id));
     if (!existing) return undefined;
 
@@ -313,15 +313,41 @@ export class DatabaseStorage implements IStorage {
     const newRegime = data.regimeFiscal ?? existing.regimeFiscal;
     const { prixTtc, prixBrs } = calculerPrix(newPrixHt, newRegime);
 
-    const [result] = await db.update(prixFournisseurs).set({
-      prixHt: newPrixHt,
-      regimeFiscal: newRegime,
-      prixTtc,
-      prixBrs,
-      dateModification: new Date(),
-    }).where(eq(prixFournisseurs.id, id)).returning();
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      if (userName) {
+        await client.query('SELECT set_config($1, $2, true)', ['app.modifier_name', userName]);
+      }
+      const result = await client.query(
+        `UPDATE prix.prix_fournisseurs SET prix_ht = $1, regime_fiscal = $2, prix_ttc = $3, prix_brs = $4, date_modification = NOW() WHERE id = $5 RETURNING *`,
+        [newPrixHt, newRegime, prixTtc, prixBrs, id]
+      );
+      await client.query('COMMIT');
+      return result.rows[0] ? this.mapPrixRow(result.rows[0]) : undefined;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
 
-    return result;
+  private mapPrixRow(row: any): PrixFournisseur {
+    return {
+      id: row.id,
+      produitMasterId: row.produit_master_id,
+      fournisseurId: row.fournisseur_id,
+      prixHt: row.prix_ht,
+      regimeFiscal: row.regime_fiscal,
+      prixTtc: row.prix_ttc,
+      prixBrs: row.prix_brs,
+      estFournisseurDefaut: row.est_fournisseur_defaut,
+      actif: row.actif,
+      dateCreation: row.date_creation,
+      dateModification: row.date_modification,
+      creePar: row.cree_par,
+    };
   }
 
   async definirFournisseurDefaut(produitId: number, prixFournisseurId: number): Promise<void> {
