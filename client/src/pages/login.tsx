@@ -58,7 +58,7 @@ export default function Login({ onLogin }: LoginProps) {
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary text-primary-foreground">
             <span className="text-2xl font-bold">FP</span>
           </div>
-          <CardTitle className="text-2xl">Référentiel Prix</CardTitle>
+          <CardTitle className="text-2xl">Référentiel Produits</CardTitle>
           <CardDescription>
             Connectez-vous pour accéder à l'application Filtreplante
           </CardDescription>

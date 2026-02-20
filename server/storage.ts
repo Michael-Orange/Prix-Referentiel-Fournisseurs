@@ -10,6 +10,7 @@ import {
   apiKeys,
   calculerPrix,
   normaliserNom,
+  normalizeProductName,
   type Fournisseur,
   type InsertFournisseur,
   type Categorie,
@@ -201,9 +202,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createProduit(data: InsertProduitMaster): Promise<ProduitMaster> {
-    const nomNormalise = normaliserNom(data.nom);
+    const nomTitleCase = normalizeProductName(data.nom);
+    const nomNormalise = normaliserNom(nomTitleCase);
     const [result] = await db.insert(produitsMaster).values({
       ...data,
+      nom: nomTitleCase,
       nomNormalise,
     }).returning();
     return result;
@@ -212,7 +215,9 @@ export class DatabaseStorage implements IStorage {
   async updateProduit(id: number, data: Partial<InsertProduitMaster>): Promise<ProduitMaster | undefined> {
     const updateData: Record<string, unknown> = { ...data, dateModification: new Date() };
     if (data.nom) {
-      updateData.nomNormalise = normaliserNom(data.nom);
+      const nomTitleCase = normalizeProductName(data.nom);
+      updateData.nom = nomTitleCase;
+      updateData.nomNormalise = normaliserNom(nomTitleCase);
     }
     const [result] = await db.update(produitsMaster).set(updateData).where(eq(produitsMaster.id, id)).returning();
     return result;

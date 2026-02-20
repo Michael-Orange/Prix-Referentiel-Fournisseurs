@@ -45,6 +45,7 @@ import {
   StarOff,
   AlertTriangle,
   ArrowRight,
+  ExternalLink,
   User,
   ChevronUp,
   ChevronDown,
@@ -59,7 +60,7 @@ import type {
   HistoriquePrix,
   REGIMES_FISCAUX,
 } from "@shared/schema";
-import { calculerPrix } from "@shared/schema";
+import { calculerPrix, normalizeProductName } from "@shared/schema";
 
 interface DuplicateResult {
   id: number;
@@ -454,6 +455,11 @@ export default function Produits() {
                 placeholder="Ex: Ciment CEM II 42.5"
                 data-testid="input-product-nom"
               />
+              {productForm.nom && normalizeProductName(productForm.nom) !== productForm.nom && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Sera enregistré : <span className="font-medium">{normalizeProductName(productForm.nom)}</span>
+                </p>
+              )}
             </div>
 
             {duplicates.length > 0 && (
@@ -463,13 +469,37 @@ export default function Produits() {
                   Produits similaires détectés
                 </div>
                 <div className="space-y-1">
-                  {duplicates.map((d) => (
-                    <div key={d.id} className="flex items-center justify-between text-sm p-1.5 rounded bg-orange-100/50" data-testid={`duplicate-${d.id}`}>
-                      <span>{d.nom} <span className="text-muted-foreground">({d.categorie})</span></span>
-                      <Badge variant="outline" className="text-orange-700">{Math.round(d.score * 100)}%</Badge>
-                    </div>
-                  ))}
+                  {duplicates.map((d) => {
+                    const scorePercent = Math.round(d.score * 100);
+                    return (
+                      <button
+                        key={d.id}
+                        type="button"
+                        onClick={() => {
+                          setIsProductDialogOpen(false);
+                          setDuplicates([]);
+                          setSelectedProductId(d.id);
+                        }}
+                        className="w-full flex items-center justify-between text-sm p-2 rounded-md bg-orange-100/50 border border-transparent cursor-pointer text-left hover-elevate active-elevate-2"
+                        data-testid={`duplicate-${d.id}`}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <span className="font-medium">{d.nom}</span>
+                          <span className="text-muted-foreground ml-1">({d.categorie})</span>
+                        </div>
+                        <div className="flex items-center gap-2 ml-2 shrink-0">
+                          <Badge variant="outline" className={
+                            scorePercent >= 70 ? "text-orange-700 border-orange-400" :
+                            scorePercent >= 50 ? "text-yellow-700 border-yellow-400" :
+                            "text-muted-foreground"
+                          }>{scorePercent}%</Badge>
+                          <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
+                <p className="text-xs text-orange-700 mt-2">Cliquez pour voir le détail du produit</p>
               </div>
             )}
 

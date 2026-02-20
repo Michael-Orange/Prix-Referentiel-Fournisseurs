@@ -1,4 +1,4 @@
-# Référentiel Prix Fournisseurs - Filtreplante
+# Référentiel Produits - Filtreplante
 
 ## Overview
 
@@ -134,3 +134,8 @@ BRS 5%:   prixTtc = null, prixBrs = prixHt / 0.95
 - History aggregation: getHistoriquePrix now fetches history across all price entries for same product+supplier
 - Added "Dernière MAJ" column in products table showing prixDateModification (from default supplier price)
 - Sortable columns: Produit, Catégorie, Prix HT, Prix final, Dernière MAJ, Créé par with 3-state cycle (asc/desc/neutral)
+- Renamed "Référentiel Prix" to "Référentiel Produits" across login, sidebar, header, HTML title
+- Clickable similar products in creation dialog: click closes dialog and opens product detail Sheet
+- Title Case normalization: normalizeProductName() with acronym preservation (EPI, PVC, DN, PN, etc.)
+- Normalization applied on product creation/update (server-side) with real-time preview in frontend form
+- Migrated 340 existing products to Title Case via scripts/normalize-products.ts

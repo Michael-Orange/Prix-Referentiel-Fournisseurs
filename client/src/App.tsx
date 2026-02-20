@@ -41,7 +41,7 @@ function AuthenticatedApp({ user, onLogout }: { user: AuthUser; onLogout: () => 
           <header className="flex items-center gap-2 p-3 border-b bg-card">
             <SidebarTrigger data-testid="button-sidebar-toggle" />
             <h1 className="text-sm font-medium text-muted-foreground">
-              Référentiel Prix Fournisseurs
+              Référentiel Produits Fournisseurs
             </h1>
           </header>
           <main className="flex-1 overflow-auto bg-background">

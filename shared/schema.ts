@@ -193,3 +193,30 @@ export function normaliserNom(nom: string): string {
     .sort()
     .join(" ");
 }
+
+const ACRONYMES = [
+  "EPI", "PVC", "DN", "PN", "PM", "GM", "HP", "BP", "HT", "BT",
+  "LED", "IP", "UV", "PE", "PP", "HD", "BD", "AC", "DC",
+  "CEM", "NF", "ISO", "HDPE", "PPN", "PPR", "PEHD",
+  "GE", "TN", "TP", "BTP", "VRD", "PV",
+];
+
+export function normalizeProductName(name: string): string {
+  if (!name) return "";
+
+  return name
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .map((word) => {
+      if (word.length === 0) return word;
+      const stripped = word.replace(/[^a-zA-Z0-9]/g, "");
+      const upper = stripped.toUpperCase();
+      if (ACRONYMES.includes(upper)) {
+        return word.replace(stripped, upper);
+      }
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(" ");
+}

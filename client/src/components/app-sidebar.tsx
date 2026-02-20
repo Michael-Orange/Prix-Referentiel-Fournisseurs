@@ -68,7 +68,7 @@ export function AppSidebar({ user, onLogout }: AppSidebarProps) {
           </div>
           <div className="flex flex-col">
             <span className="font-semibold text-sidebar-foreground">Filtreplante</span>
-            <span className="text-xs text-muted-foreground">Référentiel Prix</span>
+            <span className="text-xs text-muted-foreground">Référentiel Produits</span>
           </div>
         </div>
       </SidebarHeader>
