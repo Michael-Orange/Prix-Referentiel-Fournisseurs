@@ -1,0 +1,396 @@
+
+# BRIEF : Produits Similaires Cliquables
+
+## 🎯 OBJECTIF
+Permettre de cliquer sur un produit similaire détecté lors de la création pour accéder directement à sa page détail.
+
+## 📸 CONTEXTE
+
+**Écran actuel :**
+```
+┌───────────────────────────────────────────┐
+│ Nouveau produit                       [×] │
+├───────────────────────────────────────────┤
+│ Nom du produit *                          │
+│ [chaussure 44________________]            │
+│                                           │
+│ ⚠️ Produits similaires détectés           │
+│                                           │
+│ PAIRE CHAUSSURES - 44 (EPI)     65%      │
+│ PAIRE CHAUSSURES - 41 (EPI)     50%      │
+│ PAIRE CHAUSSURES - 42 (EPI)     50%      │
+│                                           │
+└───────────────────────────────────────────┘
+```
+
+**Problème :** Les produits similaires ne sont pas cliquables. L'user doit :
+1. Fermer le modal
+2. Chercher "PAIRE CHAUSSURES - 44" dans la liste
+3. Cliquer dessus pour voir le détail
+
+**Solution :** Rendre les lignes cliquables → redirection directe vers le produit.
+
+---
+
+## 🛠️ IMPLÉMENTATION
+
+### 1. Rendre les lignes cliquables
+
+**UI souhaitée :**
+```
+┌───────────────────────────────────────────┐
+│ ⚠️ Produits similaires détectés           │
+│                                           │
+│ [PAIRE CHAUSSURES - 44 (EPI)    65% →]   │  ← Ligne cliquable
+│ [PAIRE CHAUSSURES - 41 (EPI)    50% →]   │
+│ [PAIRE CHAUSSURES - 42 (EPI)    50% →]   │
+│                                           │
+│ [Aucun ne correspond, créer nouveau]      │
+└───────────────────────────────────────────┘
+```
+
+**Design :**
+- Effet hover : fond gris clair + curseur pointer
+- Icône flèche "→" ou "↗" à droite de chaque ligne
+- Transition douce (0.2s)
+
+### 2. Composant ProduitSimilaireItem
+
+Dans `client/src/components/ProduitSimilaireAlert.tsx` (ou fichier équivalent) :
+
+```tsx
+import { useNavigate } from 'react-router-dom';
+import { ExternalLink } from 'lucide-react';
+
+interface ProduitSimilaire {
+  id: number;
+  nom: string;
+  categorie: string;
+  score: number; // 0.50 = 50%
+}
+
+function ProduitSimilaireItem({ produit }: { produit: ProduitSimilaire }) {
+  const navigate = useNavigate();
+  
+  const handleClick = () => {
+    // Fermer le modal de création
+    // (supposant que onClose est passé en props au composant parent)
+    
+    // Rediriger vers la page produit
+    navigate(`/produits/${produit.id}`);
+  };
+  
+  const scorePercent = Math.round(produit.score * 100);
+  
+  return (
+    <button
+      onClick={handleClick}
+      className="w-full flex items-center justify-between p-3 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer text-left border border-transparent hover:border-teal-200"
+    >
+      <div className="flex-1">
+        <div className="font-medium text-gray-900">
+          {produit.nom}
+        </div>
+        <div className="text-sm text-gray-500">
+          {produit.categorie}
+        </div>
+      </div>
+      
+      <div className="flex items-center space-x-3">
+        <span className={`text-sm font-medium ${
+          scorePercent >= 70 ? 'text-orange-600' :
+          scorePercent >= 50 ? 'text-yellow-600' :
+          'text-gray-600'
+        }`}>
+          {scorePercent}%
+        </span>
+        <ExternalLink size={16} className="text-gray-400" />
+      </div>
+    </button>
+  );
+}
+```
+
+### 3. Intégrer dans l'Alert
+
+Dans le composant d'alerte des produits similaires :
+
+```tsx
+function ProduitSimilaireAlert({ 
+  produitsSimilaires, 
+  onClose // Fonction pour fermer le modal de création
+}: {
+  produitsSimilaires: ProduitSimilaire[];
+  onClose: () => void;
+}) {
+  return (
+    <Alert variant="warning" className="mb-4">
+      <AlertTriangle className="h-4 w-4" />
+      <AlertTitle>Produits similaires détectés</AlertTitle>
+      <AlertDescription>
+        <div className="mt-3 space-y-2">
+          {produitsSimilaires.map((produit) => (
+            <ProduitSimilaireItem 
+              key={produit.id} 
+              produit={produit}
+            />
+          ))}
+        </div>
+        
+        <div className="mt-4 pt-3 border-t border-gray-200">
+          <p className="text-sm text-gray-600 mb-2">
+            Aucun ne correspond ?
+          </p>
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={onClose} // Reste sur le modal pour continuer la création
+          >
+            Créer un nouveau produit
+          </Button>
+        </div>
+      </AlertDescription>
+    </Alert>
+  );
+}
+```
+
+### 4. Fermer le modal avant redirection
+
+Dans le composant modal parent (ex: `NouveauProduitModal.tsx`) :
+
+```tsx
+function NouveauProduitModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+  const [nom, setNom] = useState('');
+  const [produitsSimilaires, setProduitsSimilaires] = useState<ProduitSimilaire[]>([]);
+  
+  // Recherche de similarité (déjà implémenté)
+  const { data: similaires } = useQuery({
+    queryKey: ['produits-similaires', nom, categorie],
+    queryFn: async () => {
+      const res = await fetch(`/api/referentiel/produits/search?q=${nom}&categorie=${categorie}`);
+      return res.json();
+    },
+    enabled: nom.length > 3,
+  });
+  
+  useEffect(() => {
+    if (similaires?.resultats) {
+      setProduitsSimilaires(similaires.resultats);
+    }
+  }, [similaires]);
+  
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Nouveau produit</DialogTitle>
+          <DialogDescription>
+            Ajoutez un produit au référentiel centralisé
+          </DialogDescription>
+        </DialogHeader>
+        
+        <div className="space-y-4">
+          <div>
+            <Label>Nom du produit *</Label>
+            <Input
+              value={nom}
+              onChange={(e) => setNom(e.target.value)}
+              placeholder="Ex: Paire Chaussures - 44"
+            />
+          </div>
+          
+          {/* Alerte produits similaires */}
+          {produitsSimilaires.length > 0 && (
+            <ProduitSimilaireAlert 
+              produitsSimilaires={produitsSimilaires}
+              onClose={onClose} // Passer la fonction de fermeture
+            />
+          )}
+          
+          {/* Reste du formulaire... */}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+```
+
+### 5. Ouvrir automatiquement le détail produit
+
+Dans la page produits (ex: `ProduitsPage.tsx`) :
+
+**Option A : Panneau latéral (Drawer)**
+```tsx
+function ProduitsPage() {
+  const { id } = useParams(); // ID depuis l'URL
+  const [selectedProduitId, setSelectedProduitId] = useState<number | null>(null);
+  
+  useEffect(() => {
+    // Si un ID est dans l'URL, ouvrir le détail
+    if (id) {
+      setSelectedProduitId(parseInt(id));
+    }
+  }, [id]);
+  
+  return (
+    <>
+      {/* Liste produits */}
+      <ProductsList onSelectProduct={setSelectedProduitId} />
+      
+      {/* Drawer détail produit */}
+      <ProductDetailDrawer
+        produitId={selectedProduitId}
+        isOpen={selectedProduitId !== null}
+        onClose={() => setSelectedProduitId(null)}
+      />
+    </>
+  );
+}
+```
+
+**Option B : Modal (comme actuellement)**
+```tsx
+// Même logique mais avec Dialog au lieu de Drawer
+<Dialog open={selectedProduitId !== null} onOpenChange={() => setSelectedProduitId(null)}>
+  <DialogContent className="max-w-2xl">
+    <ProductDetail produitId={selectedProduitId} />
+  </DialogContent>
+</Dialog>
+```
+
+### 6. Navigation avec état (préservation du contexte)
+
+Pour une meilleure UX, utiliser `state` dans la navigation :
+
+```tsx
+const navigate = useNavigate();
+
+const handleClick = () => {
+  navigate(`/produits/${produit.id}`, {
+    state: { fromCreation: true } // Optionnel : pour tracking
+  });
+  
+  onClose(); // Fermer le modal de création
+};
+```
+
+---
+
+## 🎨 DESIGN DÉTAILLÉ
+
+### État normal
+```
+┌─────────────────────────────────────────────┐
+│ PAIRE CHAUSSURES - 44 (EPI)          65%  →│
+│ Catégorie: EPI                              │
+└─────────────────────────────────────────────┘
+```
+
+### État hover
+```
+┌─────────────────────────────────────────────┐
+│ PAIRE CHAUSSURES - 44 (EPI)          65%  →│  ← Fond gris clair
+│ Catégorie: EPI                              │     Bordure turquoise
+└─────────────────────────────────────────────┘
+```
+
+**Couleurs :**
+- Fond hover : `bg-gray-50`
+- Bordure hover : `border-teal-200`
+- Icône : `text-gray-400` (neutre) ou `text-teal-600` (au hover)
+- Score ≥70% : `text-orange-600` (attention forte)
+- Score 50-69% : `text-yellow-600` (attention modérée)
+- Score <50% : `text-gray-600` (info)
+
+### Icônes Lucide possibles
+- `ExternalLink` (↗) : Suggère ouverture dans nouveau contexte
+- `ArrowRight` (→) : Suggère navigation
+- `Eye` (👁) : Suggère visualisation
+
+**Recommandation :** `ExternalLink` pour clarté.
+
+---
+
+## ✅ CHECKLIST DE VALIDATION
+
+**Backend (pas de changement) :**
+- [ ] API `/api/referentiel/produits/search` fonctionne déjà
+- [ ] Retourne ID, nom, catégorie, score de similarité
+
+**Frontend :**
+- [ ] Les lignes produits similaires sont cliquables
+- [ ] Effet hover visible (fond gris + bordure turquoise)
+- [ ] Icône flèche "→" ou "↗" visible
+- [ ] Clic sur une ligne → modal création se ferme
+- [ ] Redirection vers `/produits/:id`
+- [ ] Panneau/modal détail produit s'ouvre automatiquement
+
+**UX :**
+- [ ] Curseur pointer visible au survol
+- [ ] Transition douce (pas de saut brutal)
+- [ ] Bouton "Créer un nouveau produit" reste accessible en bas
+- [ ] Pas de confusion (clairement cliquable)
+
+**Tests :**
+- [ ] Saisir "chaussure 44" → similaires détectés
+- [ ] Cliquer sur "PAIRE CHAUSSURES - 44" → redirection OK
+- [ ] Page produit s'ouvre avec détail "PAIRE CHAUSSURES - 44"
+- [ ] Retour arrière (navigateur) → retour à la liste produits
+
+---
+
+## 🎯 FLUX UTILISATEUR FINAL
+
+**Avant (actuel) :**
+```
+1. User ouvre modal "Nouveau produit"
+2. Tape "chaussure 44"
+3. Voit "PAIRE CHAUSSURES - 44" similaire
+4. Ferme le modal
+5. Cherche dans la liste "PAIRE CHAUSSURES - 44"
+6. Clique sur l'icône 👁 pour voir détail
+```
+→ **6 étapes, frustrant**
+
+**Après (avec ce brief) :**
+```
+1. User ouvre modal "Nouveau produit"
+2. Tape "chaussure 44"
+3. Voit "PAIRE CHAUSSURES - 44" similaire
+4. CLIQUE directement dessus
+5. Détail s'ouvre automatiquement
+```
+→ **5 étapes, fluide** ✨
+
+---
+
+## 📝 NOTES
+
+### Accessibilité
+Utiliser un `<button>` (pas un `<div>`) pour les lignes cliquables :
+- Support clavier (Tab + Enter)
+- Lecteurs d'écran comprennent que c'est cliquable
+- Meilleure sémantique HTML
+
+### Performance
+Pas d'impact : la navigation est instantanée (changement d'URL React Router).
+
+### Alternative : Ouvrir dans nouvel onglet
+Si tu veux permettre l'ouverture dans un nouvel onglet (Ctrl+Clic) :
+```tsx
+<a
+  href={`/produits/${produit.id}`}
+  onClick={(e) => {
+    e.preventDefault();
+    navigate(`/produits/${produit.id}`);
+    onClose();
+  }}
+  className="..."
+>
+  {/* Contenu */}
+</a>
+```
+
+Mais avec `<button>`, pas de clic droit → "Ouvrir dans nouvel onglet".
+À toi de décider selon tes préférences.
