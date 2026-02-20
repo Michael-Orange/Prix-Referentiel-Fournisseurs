@@ -1,17 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/page-header";
 import { LoadingState } from "@/components/loading-state";
-import { formatFCFA, formatDate } from "@/lib/utils";
-import { Package, Users, FolderTree, TrendingUp, Activity } from "lucide-react";
-import type { ModificationLog } from "@shared/schema";
+import { Package, Users, FolderTree, TrendingUp, AlertTriangle } from "lucide-react";
 
 interface DashboardStats {
   totalProduits: number;
   totalFournisseurs: number;
   totalCategories: number;
-  prixMoyenHT: number;
-  recentModifications: ModificationLog[];
+  produitsAvecPrix: number;
+  produitsSansPrix: number;
 }
 
 export default function Dashboard() {
@@ -49,13 +47,20 @@ export default function Dashboard() {
       bgColor: "bg-purple-100",
     },
     {
-      title: "Prix moyen HT",
-      value: formatFCFA(stats?.prixMoyenHT ?? 0),
-      description: "tous produits confondus",
+      title: "Avec prix",
+      value: stats?.produitsAvecPrix ?? 0,
+      description: "produits avec tarification",
       icon: TrendingUp,
       color: "text-orange-600",
       bgColor: "bg-orange-100",
-      isPrice: true,
+    },
+    {
+      title: "Sans prix",
+      value: stats?.produitsSansPrix ?? 0,
+      description: "produits à tarifer",
+      icon: AlertTriangle,
+      color: "text-red-600",
+      bgColor: "bg-red-100",
     },
   ];
 
@@ -66,7 +71,7 @@ export default function Dashboard() {
         description="Vue d'ensemble du référentiel prix Filtreplante"
       />
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mb-8">
         {statCards.map((card) => (
           <Card key={card.title} data-testid={`card-stat-${card.title.toLowerCase().replace(/\s/g, "-")}`}>
             <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
@@ -78,8 +83,8 @@ export default function Dashboard() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className={`text-2xl font-bold ${card.isPrice ? "text-lg" : ""}`}>
-                {card.value}
+              <div className="text-2xl font-bold" data-testid={`text-stat-${card.title.toLowerCase().replace(/\s/g, "-")}`}>
+                {card.value.toLocaleString("fr-FR")}
               </div>
               <p className="text-xs text-muted-foreground mt-1">
                 {card.description}
@@ -91,49 +96,26 @@ export default function Dashboard() {
 
       <Card>
         <CardHeader>
-          <div className="flex items-center gap-2">
-            <Activity className="h-5 w-5 text-primary" />
-            <CardTitle>Activité récente</CardTitle>
-          </div>
-          <CardDescription>
-            Dernières modifications dans le système
-          </CardDescription>
+          <CardTitle className="text-lg">Régimes fiscaux sénégalais</CardTitle>
         </CardHeader>
         <CardContent>
-          {stats?.recentModifications && stats.recentModifications.length > 0 ? (
-            <div className="space-y-3">
-              {stats.recentModifications.slice(0, 10).map((log) => (
-                <div
-                  key={log.id}
-                  className="flex items-start gap-3 p-3 rounded-md bg-muted/50"
-                  data-testid={`log-item-${log.id}`}
-                >
-                  <div className="flex-1">
-                    <p className="text-sm font-medium">
-                      {log.action} sur {log.tableName}
-                      {log.champModifie && (
-                        <span className="text-muted-foreground">
-                          {" "}({log.champModifie})
-                        </span>
-                      )}
-                    </p>
-                    {log.ancienneValeur && log.nouvelleValeur && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {log.ancienneValeur} → {log.nouvelleValeur}
-                      </p>
-                    )}
-                  </div>
-                  <span className="text-xs text-muted-foreground whitespace-nowrap">
-                    {formatDate(log.dateModification)}
-                  </span>
-                </div>
-              ))}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="p-4 rounded-lg bg-blue-50 border border-blue-200">
+              <div className="font-semibold text-blue-800">TVA 18%</div>
+              <div className="text-sm text-blue-600 mt-1">Fournisseurs officiels avec TVA</div>
+              <div className="text-xs text-blue-500 mt-2">Prix TTC = Prix HT × 1,18</div>
             </div>
-          ) : (
-            <p className="text-sm text-muted-foreground text-center py-8">
-              Aucune activité récente
-            </p>
-          )}
+            <div className="p-4 rounded-lg bg-green-50 border border-green-200">
+              <div className="font-semibold text-green-800">Sans TVA</div>
+              <div className="text-sm text-green-600 mt-1">Fournisseurs informels</div>
+              <div className="text-xs text-green-500 mt-2">Prix TTC = Prix HT (pas de taxe)</div>
+            </div>
+            <div className="p-4 rounded-lg bg-purple-50 border border-purple-200">
+              <div className="font-semibold text-purple-800">BRS 5%</div>
+              <div className="text-sm text-purple-600 mt-1">Bénéfice Réel Simplifié</div>
+              <div className="text-xs text-purple-500 mt-2">Prix BRS = Prix HT / 0,95</div>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>

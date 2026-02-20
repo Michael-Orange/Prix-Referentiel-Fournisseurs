@@ -1,0 +1,61 @@
+
+# PRÉCISIONS SUPPLÉMENTAIRES AU BRIEF
+
+## 📊 UNITÉS À IMPORTER DEPUIS STOCK
+
+D'après le schema Stock (https://github.com/Michael-Orange/GestionStockFP/blob/main/shared/schema.ts), le champ `unite` est en format texte libre.
+
+Lors de l'import du CSV Stock, extraire toutes les valeurs uniques de la colonne "unite" et créer les entrées dans la table `referentiel.unites`.
+
+Mapping à appliquer pour standardiser :
+- "unité(s)" ou "u" → code: "u", libelle: "unité(s)", type: "quantité"
+- "mètre(s)" ou "m" → code: "m", libelle: "mètre(s)", type: "longueur"
+- "mètre linéaire(s)" ou "ml" → code: "ml", libelle: "mètre linéaire(s)", type: "longueur"
+
+Si des unités non standard sont trouvées dans le CSV, les créer telles quelles (on normalisera plus tard manuellement si besoin).
+
+## 🎨 DESIGN & COULEURS FILTREPLANTE
+
+Inspiration : https://filtreplante.com
+
+Palette de couleurs à utiliser :
+- **Couleur principale** : Turquoise/vert d'eau #3AA6B9 (boutons, liens, highlights)
+- **Couleur secondaire** : Blanc #FFFFFF (backgrounds)
+- **Texte** : Gris foncé #2C3E50 ou noir
+- **Accents verts** : #4CAF50 pour les succès/validations
+- **Accents warning** : #FF9800 pour les alertes doublons
+
+Style général :
+- Design épuré et naturel
+- Police moderne et lisible (Inter ou similaire)
+- Espaces aérés (padding généreux)
+- Cards avec ombres légères
+- Boutons arrondis (border-radius: 8px)
+
+Composants shadcn/ui à privilégier avec ces couleurs :
+- Alerts avec variante "warning" pour doublons
+- Badges turquoise pour "Par défaut"
+- Cards avec border subtile
+
+## 🗄️ ARCHITECTURE BASE DE DONNÉES PARTAGÉE
+
+**Confirmation :** On utilise l'Option 1 (BDD partagée entre 2 Repls séparés).
+
+Ce Repl (FP-Referentiel-Produit, déjà renommé) :
+- Héberge la `DATABASE_URL` PostgreSQL
+- Crée et gère les schemas `referentiel` + `prix`
+- L'app Stock se connectera à cette même `DATABASE_URL` (Brief 2, développement ultérieur)
+
+**Important pour la migration** : 
+- Créer les schemas avec `CREATE SCHEMA IF NOT EXISTS referentiel;`
+- Créer les schemas avec `CREATE SCHEMA IF NOT EXISTS prix;` 
+- S'assurer que les tables existantes dans le schema public ne sont pas touchées
+
+## ✅ CHECKLIST ADDITIONNELLE
+
+Avant de finaliser, vérifier :
+- [ ] Les unités du CSV Stock sont toutes importées dans `referentiel.unites`
+- [ ] Les couleurs Filtreplante (#3AA6B9) sont appliquées aux boutons principaux
+- [ ] Le fournisseur "par défaut" a un badge/étoile turquoise visible
+- [ ] Les alerts doublons utilisent la couleur warning (#FF9800)
+- [ ] Le Repl est bien nommé "FP-Referentiel-Produit"

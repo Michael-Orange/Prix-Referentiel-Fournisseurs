@@ -1,193 +1,177 @@
-import { db } from "./db";
-import {
-  fournisseurs,
-  categories,
-  sousSections,
-  produits,
-  prixFournisseurs,
-  modificationsLog,
-} from "@shared/schema";
-import { readFileSync } from "fs";
-import { join } from "path";
+import { db, pool } from "./db";
+import { categories, unites, produitsMaster, fournisseurs, normaliserNom } from "@shared/schema";
 import { parse } from "csv-parse/sync";
+import fs from "fs";
+import path from "path";
+
+const UNITE_MAPPING: Record<string, { code: string; libelle: string; type: string }> = {
+  "unité(s)": { code: "u", libelle: "unité(s)", type: "quantité" },
+  "mètre(s)": { code: "m", libelle: "mètre(s)", type: "longueur" },
+  "mètre linéaire(s)": { code: "ml", libelle: "mètre linéaire(s)", type: "longueur" },
+  "L": { code: "L", libelle: "litre(s)", type: "volume" },
+  "Nb de tuyaux 6m": { code: "tuyaux_6m", libelle: "Nb de tuyaux 6m", type: "quantité" },
+  "Rouleau de 100m": { code: "rouleau_100m", libelle: "Rouleau de 100m", type: "longueur" },
+  "Rouleau de 50m": { code: "rouleau_50m", libelle: "Rouleau de 50m", type: "longueur" },
+  "Chute > 3m (et inf. à 10m)": { code: "chute_3_10m", libelle: "Chute > 3m (et inf. à 10m)", type: "longueur" },
+  "Chute > 50cm": { code: "chute_50cm", libelle: "Chute > 50cm", type: "longueur" },
+};
 
 export async function seedDatabase() {
   console.log("🚀 Checking if seed data exists...");
-
-  const existingFournisseurs = await db.select().from(fournisseurs);
-  if (existingFournisseurs.length > 0) {
+  const existing = await db.select().from(produitsMaster).limit(1);
+  if (existing.length > 0) {
     console.log("✅ Seed data already exists, skipping...");
     return;
   }
-
-  console.log("🔄 Seeding database with Filtreplante data...");
-
-  // 1. Create Fournisseurs (4 total)
-  const fournisseursData = [
-    { nom: "ABC Matériaux", tvaApplicable: true, actif: true },
-    { nom: "Dakar Pro BTP", tvaApplicable: true, actif: true },
-    { nom: "Amadou Matériaux", tvaApplicable: false, actif: true },
-    { nom: "Marché Sandaga", tvaApplicable: false, actif: true },
-  ];
-
-  const insertedFournisseurs = await db.insert(fournisseurs).values(fournisseursData).returning();
-  console.log("✅ 4 fournisseurs créés:", insertedFournisseurs.map((f) => f.nom).join(", "));
-
-  // 2. Create Categories (9 total)
-  const categoriesData = [
-    { nom: "Clôture", description: "Matériel de clôture", ordre: 0 },
-    { nom: "EPI", description: "Équipements de protection individuelle", ordre: 1 },
-    { nom: "Electricité", description: "Équipement électrique", ordre: 2 },
-    { nom: "Equipements lourds", description: "Équipements et machines lourdes", ordre: 3 },
-    { nom: "Etanchéité", description: "Matériaux d'étanchéité et géomembranes", ordre: 4 },
-    { nom: "Monolyto", description: "Produits Monolyto", ordre: 5 },
-    { nom: "Outillage-Autres", description: "Outils et équipements divers", ordre: 6 },
-    { nom: "Plomberie et Irrigation", description: "Matériel de plomberie et systèmes d'irrigation", ordre: 7 },
-    { nom: "Pompes", description: "Pompes et équipements de pompage", ordre: 8 },
-  ];
-
-  const insertedCategories = await db.insert(categories).values(categoriesData).returning();
-  console.log("✅ 9 catégories créées:", insertedCategories.map((c) => c.nom).join(", "));
-
-  // Create category lookup map
-  const categoriesMap = new Map(insertedCategories.map((c) => [c.nom, c.id]));
-
-  // 3. Create Sous-sections (18 total)
-  const sousSectionsData = [
-    // Clôture
-    { categorieId: categoriesMap.get("Clôture")!, nom: "Tous", ordre: 0 },
-    // EPI
-    { categorieId: categoriesMap.get("EPI")!, nom: "Tous", ordre: 0 },
-    // Electricité
-    { categorieId: categoriesMap.get("Electricité")!, nom: "Tous", ordre: 0 },
-    // Equipements lourds
-    { categorieId: categoriesMap.get("Equipements lourds")!, nom: "Tous", ordre: 0 },
-    // Etanchéité
-    { categorieId: categoriesMap.get("Etanchéité")!, nom: "Géomembranes", ordre: 0 },
-    { categorieId: categoriesMap.get("Etanchéité")!, nom: "Geotextile", ordre: 1 },
-    // Monolyto
-    { categorieId: categoriesMap.get("Monolyto")!, nom: "Tous", ordre: 0 },
-    // Outillage-Autres
-    { categorieId: categoriesMap.get("Outillage-Autres")!, nom: "Outils manuels", ordre: 0 },
-    { categorieId: categoriesMap.get("Outillage-Autres")!, nom: "Mesure & traçage", ordre: 1 },
-    { categorieId: categoriesMap.get("Outillage-Autres")!, nom: "Sécurité & signalisation", ordre: 2 },
-    { categorieId: categoriesMap.get("Outillage-Autres")!, nom: "Équipement & mobilier", ordre: 3 },
-    // Plomberie et Irrigation
-    { categorieId: categoriesMap.get("Plomberie et Irrigation")!, nom: "Tubes & tuyaux", ordre: 0 },
-    { categorieId: categoriesMap.get("Plomberie et Irrigation")!, nom: "Coudes", ordre: 1 },
-    { categorieId: categoriesMap.get("Plomberie et Irrigation")!, nom: "Raccords & adaptateurs", ordre: 2 },
-    { categorieId: categoriesMap.get("Plomberie et Irrigation")!, nom: "Vannes & régulation", ordre: 3 },
-    { categorieId: categoriesMap.get("Plomberie et Irrigation")!, nom: "Bouchons & finitions", ordre: 4 },
-    { categorieId: categoriesMap.get("Plomberie et Irrigation")!, nom: "Autres", ordre: 5 },
-    { categorieId: categoriesMap.get("Plomberie et Irrigation")!, nom: "Irrigation & arrosage", ordre: 6 },
-    // Pompes
-    { categorieId: categoriesMap.get("Pompes")!, nom: "Tous", ordre: 0 },
-  ];
-
-  const insertedSousSections = await db.insert(sousSections).values(sousSectionsData).returning();
-  console.log("✅ 19 sous-sections créées");
-
-  // Create sous-section lookup map (categorie|nom -> id)
-  const ssMap = new Map<string, number>();
-  for (const ss of insertedSousSections) {
-    const cat = insertedCategories.find((c) => c.id === ss.categorieId);
-    if (cat) {
-      ssMap.set(`${cat.nom}|${ss.nom}`, ss.id);
-    }
-  }
-
-  // 4. Import products from CSV
-  const csvPath = join(process.cwd(), "products.csv");
-  let csvContent: string;
-  
-  try {
-    csvContent = readFileSync(csvPath, "utf-8");
-  } catch (error) {
-    console.log("⚠️ products.csv not found, skipping product import");
-    console.log("🎉 Seed terminé (sans produits)!");
-    return;
-  }
-
-  const records = parse(csvContent, {
-    columns: true,
-    skip_empty_lines: true,
-    trim: true,
-  }) as Array<{ categorie: string; sous_section: string; nom: string; unite: string }>;
-
-  // Sort records alphabetically: category > sous_section > nom
-  records.sort((a, b) => {
-    const catCompare = a.categorie.localeCompare(b.categorie, "fr");
-    if (catCompare !== 0) return catCompare;
-    const ssCompare = a.sous_section.localeCompare(b.sous_section, "fr");
-    if (ssCompare !== 0) return ssCompare;
-    return a.nom.localeCompare(b.nom, "fr");
-  });
-
-  const produitsData: Array<{
-    reference: string;
-    nom: string;
-    categorieId: number;
-    sousSectionId: number | null;
-    uniteMesure: string;
-    actif: boolean;
-  }> = [];
-
-  let compteur = 1;
-
-  for (const record of records) {
-    const categorieId = categoriesMap.get(record.categorie);
-    const sousSectionId = ssMap.get(`${record.categorie}|${record.sous_section}`);
-
-    if (!categorieId) {
-      console.log(`⚠️ Catégorie non trouvée: ${record.categorie}`);
-      continue;
-    }
-
-    const reference = `FP-${compteur.toString().padStart(3, "0")}`;
-
-    produitsData.push({
-      reference,
-      nom: record.nom,
-      categorieId,
-      sousSectionId: sousSectionId || null,
-      uniteMesure: record.unite,
-      actif: true,
-    });
-
-    compteur++;
-  }
-
-  // Insert products in batches
-  const batchSize = 50;
-  for (let i = 0; i < produitsData.length; i += batchSize) {
-    const batch = produitsData.slice(i, i + batchSize);
-    await db.insert(produits).values(batch);
-  }
-
-  console.log(`✅ ${produitsData.length} produits créés avec références FP-001 à FP-${(produitsData.length).toString().padStart(3, "0")}`);
-
-  // 5. NO prices created (empty table)
-  console.log("✅ Table prix_fournisseurs vide (à saisir manuellement)");
-
-  console.log("🎉 Seed terminé avec succès!");
-  console.log(`   - 4 fournisseurs`);
-  console.log(`   - 9 catégories`);
-  console.log(`   - ${insertedSousSections.length} sous-sections`);
-  console.log(`   - ${produitsData.length} produits`);
-  console.log(`   - 0 prix`);
+  await runSeed();
 }
 
 export async function resetAndReseed() {
   console.log("🗑️ Suppression des données existantes...");
-  
-  await db.delete(modificationsLog);
-  await db.delete(prixFournisseurs);
-  await db.delete(produits);
-  await db.delete(sousSections);
-  await db.delete(categories);
-  await db.delete(fournisseurs);
-  
-  console.log("✅ Tables vidées");
-  
-  await seedDatabase();
+  const client = await pool.connect();
+  try {
+    await client.query("DELETE FROM prix.historique_prix");
+    await client.query("DELETE FROM prix.prix_fournisseurs");
+    await client.query("DELETE FROM referentiel.produits_master");
+    await client.query("DELETE FROM referentiel.categories");
+    await client.query("DELETE FROM referentiel.unites");
+  } finally {
+    client.release();
+  }
+  console.log("✅ Tables vidées (fournisseurs conservés)");
+  await runSeed();
+}
+
+async function runSeed() {
+  console.log("🔄 Seeding database...");
+
+  const existingF = await db.select().from(fournisseurs).limit(1);
+  if (existingF.length === 0) {
+    await seedFournisseurs();
+  } else {
+    console.log("✅ Fournisseurs existants conservés");
+  }
+
+  await seedUnites();
+  await seedFromCSV();
+  console.log("🎉 Seed terminé avec succès!");
+}
+
+async function seedFournisseurs() {
+  const data = [
+    { nom: "ABC Matériaux", statutTva: "tva_18" },
+    { nom: "Dakar Pro BTP", statutTva: "tva_18" },
+    { nom: "Amadou Matériaux", statutTva: "sans_tva" },
+    { nom: "Marché Sandaga", statutTva: "sans_tva" },
+  ];
+  for (const f of data) {
+    await db.insert(fournisseurs).values(f).onConflictDoNothing();
+  }
+  console.log("✅ 4 fournisseurs créés");
+}
+
+async function seedUnites() {
+  const defaultUnites = [
+    { code: "u", libelle: "unité(s)", type: "quantité" },
+    { code: "m", libelle: "mètre(s)", type: "longueur" },
+    { code: "ml", libelle: "mètre linéaire(s)", type: "longueur" },
+    { code: "m2", libelle: "mètre carré(s)", type: "surface" },
+    { code: "kg", libelle: "kilogramme(s)", type: "masse" },
+    { code: "L", libelle: "litre(s)", type: "volume" },
+    { code: "t", libelle: "tonne(s)", type: "masse" },
+  ];
+  for (const u of defaultUnites) {
+    await db.insert(unites).values(u).onConflictDoNothing();
+  }
+  console.log("✅ Unités de base créées");
+}
+
+async function seedFromCSV() {
+  const csvPath = path.join(process.cwd(), "attached_assets", "products_(1)_1771624236062.csv");
+  if (!fs.existsSync(csvPath)) {
+    console.log("⚠️ CSV non trouvé, seed minimal");
+    await seedMinimalCategories();
+    return;
+  }
+
+  const csvContent = fs.readFileSync(csvPath, "utf-8");
+  const records = parse(csvContent, {
+    columns: true,
+    skip_empty_lines: true,
+    trim: true,
+  }) as Array<Record<string, string>>;
+
+  const uniqueCategories = new Set<string>();
+  const uniqueUnites = new Set<string>();
+
+  for (const row of records) {
+    uniqueCategories.add(row.categorie);
+    uniqueUnites.add(row.unite);
+  }
+
+  const sortedCats = Array.from(uniqueCategories).sort();
+  for (let i = 0; i < sortedCats.length; i++) {
+    await db.insert(categories).values({
+      nom: sortedCats[i],
+      ordreAffichage: i + 1,
+    }).onConflictDoNothing();
+  }
+  console.log(`✅ ${sortedCats.length} catégories créées`);
+
+  for (const u of uniqueUnites) {
+    const mapped = UNITE_MAPPING[u];
+    if (mapped) {
+      await db.insert(unites).values(mapped).onConflictDoNothing();
+    } else {
+      const code = u.toLowerCase().replace(/[^a-z0-9]/g, "_").replace(/_+/g, "_").substring(0, 30);
+      await db.insert(unites).values({
+        code,
+        libelle: u,
+        type: "autre",
+      }).onConflictDoNothing();
+    }
+  }
+
+  const seenNames = new Set<string>();
+  let importCount = 0;
+
+  for (const row of records) {
+    const nom = row.nom?.trim();
+    if (!nom) continue;
+    const key = nom.toUpperCase();
+    if (seenNames.has(key)) continue;
+    seenNames.add(key);
+
+    const sousSection = (!row.sous_section || row.sous_section === "Tous") ? null : row.sous_section;
+
+    await db.insert(produitsMaster).values({
+      nom,
+      nomNormalise: normaliserNom(nom),
+      categorie: row.categorie,
+      sousSection,
+      unite: row.unite || "unité(s)",
+      estStockable: true,
+      sourceApp: "stock",
+      actif: row.actif !== "false",
+      longueur: row.longueur ? parseFloat(row.longueur) : null,
+      largeur: row.largeur ? parseFloat(row.largeur) : null,
+      couleur: row.couleur || null,
+      estTemplate: row.est_template === "true",
+      creePar: "migration_csv",
+    }).onConflictDoNothing();
+    importCount++;
+  }
+
+  console.log(`✅ ${importCount} produits importés depuis CSV`);
+}
+
+async function seedMinimalCategories() {
+  const cats = [
+    "Clotûre", "EPI", "Electricité", "Equipements lourds",
+    "Etanchéité", "Monolyto", "Outillage-Autres",
+    "Plomberie et Irrigation", "Pompes",
+  ];
+  for (let i = 0; i < cats.length; i++) {
+    await db.insert(categories).values({ nom: cats[i], ordreAffichage: i + 1 }).onConflictDoNothing();
+  }
 }

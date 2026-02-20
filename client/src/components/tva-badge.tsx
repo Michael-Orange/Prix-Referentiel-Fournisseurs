@@ -1,54 +1,31 @@
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle } from "lucide-react";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
-interface TVABadgeProps {
-  tvaApplicable: boolean;
-  tauxTVA?: number;
-  tvaOverride?: boolean;
+interface RegimeBadgeProps {
+  regime: string;
   size?: "sm" | "default";
   className?: string;
 }
 
-export function TVABadge({ 
-  tvaApplicable, 
-  tauxTVA, 
-  tvaOverride = false,
-  size = "default",
-  className 
-}: TVABadgeProps) {
-  const displayTaux = tauxTVA !== undefined ? tauxTVA : (tvaApplicable ? 18 : 0);
-  const isTVA = displayTaux > 0;
+const regimeConfig: Record<string, { label: string; className: string }> = {
+  tva_18: { label: "TVA 18%", className: "bg-blue-600 hover:bg-blue-700" },
+  sans_tva: { label: "Sans TVA", className: "bg-green-600 hover:bg-green-700" },
+  brs_5: { label: "BRS 5%", className: "bg-purple-600 hover:bg-purple-700" },
+};
+
+export function RegimeBadge({ regime, size = "default", className }: RegimeBadgeProps) {
+  const config = regimeConfig[regime] || { label: regime, className: "bg-gray-500" };
 
   return (
-    <div className={cn("inline-flex items-center gap-1", className)}>
-      <Badge 
-        variant={isTVA ? "default" : "secondary"}
-        className={cn(
-          size === "sm" && "text-xs px-1.5 py-0.5"
-        )}
-        data-testid={`badge-tva-${isTVA ? "18" : "0"}`}
-      >
-        {isTVA ? `TVA ${displayTaux}%` : "Sans TVA"}
-      </Badge>
-      {tvaOverride && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <AlertTriangle 
-              className="h-4 w-4 text-destructive cursor-help" 
-              data-testid="icon-tva-override"
-            />
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>TVA modifiée manuellement (différent du profil fournisseur)</p>
-          </TooltipContent>
-        </Tooltip>
+    <Badge
+      className={cn(
+        config.className,
+        size === "sm" && "text-xs px-1.5 py-0.5",
+        className
       )}
-    </div>
+      data-testid={`badge-regime-${regime}`}
+    >
+      {config.label}
+    </Badge>
   );
 }

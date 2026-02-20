@@ -1,0 +1,956 @@
+# BRIEF : Référentiel Produits Filtreplante avec Prix Multi-Fournisseurs
+
+## 🎯 OBJECTIF
+Créer un référentiel centralisé de tous les produits Filtreplante (stockés ou non) avec :
+- Détection intelligente des doublons
+- Gestion multi-fournisseurs par produit
+- Calculs automatiques prix TTC/BRS selon régime fiscal sénégalais
+- Historique des modifications de prix
+- Fournisseur par défaut par produit
+
+## 📐 CONTEXTE ARCHITECTURAL
+
+### Structure globale
+- **Base de données unique** PostgreSQL partagée entre apps
+- **3 schemas isolés** : 
+  - `referentiel` : Données communes (produits, catégories, unités)
+  - `stock` : Données spécifiques à la gestion de stock
+  - `prix` : Données spécifiques aux prix fournisseurs
+- **Règle d'isolation** : Chaque app ne touche QUE ses schemas + referentiel (jamais les autres)
+
+### Responsabilités
+- **App FP-Referentiel-Produit** (anciennement Prix) :
+  - Propriétaire des schemas `referentiel` + `prix`
+  - Gère les produits + fournisseurs + prix
+  - Expose l'API REST avec authentification par scopes
+
+- **App GestionStockFP** :
+  - Lit/écrit dans `referentiel.produits_master` (direct BDD)
+  - Gère `stock.*` (stock_actuel, mouvements, etc.)
+  - Lit le fournisseur par défaut via API (développement ultérieur)
+
+## 🗂️ SCHEMA BASE DE DONNÉES
+
+### 1. Schema "referentiel" (NOUVEAU)
+
+#### Table : produits_master
+Référentiel unique de tous les produits Filtreplante (SANS les prix).
+
+Colonnes :
+- `id` : SERIAL PRIMARY KEY
+- `nom` : TEXT NOT NULL UNIQUE (ex: "Tuyau PVC PN10 DN63")
+- `nom_normalise` : TEXT NOT NULL (ex: "50mm pvc tuyau", pour recherche intelligente)
+- `categorie` : TEXT NOT NULL (ex: "Plomberie-Tuyauterie", format avec tiret à conserver)
+- `sous_section` : TEXT (nullable, ex: "Accessoires")
+- `unite` : TEXT NOT NULL (ex: "mètre(s)", "unité(s)", format long à conserver)
+
+**Métadonnées :**
+- `est_stockable` : BOOLEAN NOT NULL DEFAULT false (true si géré dans Stock)
+- `source_app` : TEXT NOT NULL ("stock" | "prix")
+- `actif` : BOOLEAN NOT NULL DEFAULT true
+
+**Attributs optionnels (pour géomembranes) :**
+- `longueur` : REAL (nullable)
+- `largeur` : REAL (nullable)
+- `couleur` : TEXT (nullable)
+- `est_template` : BOOLEAN DEFAULT false
+
+**Audit :**
+- `date_creation` : TIMESTAMP NOT NULL DEFAULT NOW()
+- `date_modification` : TIMESTAMP NOT NULL DEFAULT NOW()
+- `cree_par` : TEXT (username)
+
+**Index :**
+- UNIQUE sur `nom` (empêcher doublons exacts)
+- GIN index sur `nom_normalise` (recherche trigrams PostgreSQL)
+- Index sur `categorie`, `est_stockable`, `actif`
+
+#### Table : categories
+Liste fixe des catégories Filtreplante.
+
+Colonnes :
+- `id` : SERIAL PRIMARY KEY
+- `nom` : TEXT UNIQUE NOT NULL (ex: "Plomberie-Tuyauterie")
+- `ordre_affichage` : INTEGER
+
+**Peupler depuis le CSV Stock** (catégories uniques extraites de la colonne "categorie")
+
+#### Table : unites
+Liste fixe des unités de mesure.
+
+Colonnes :
+- `id` : SERIAL PRIMARY KEY
+- `code` : TEXT UNIQUE NOT NULL (ex: "m", "u", "kg")
+- `libelle` : TEXT NOT NULL (ex: "mètre(s)", "unité(s)")
+- `type` : TEXT (ex: "longueur", "quantité", "masse")
+
+**Peupler avec les unités du CSV Stock** + ajouter les standards :
+- unité(s) / u / quantité
+- mètre(s) / m / longueur
+- mètre linéaire(s) / ml / longueur
+- mètre carré(s) / m² / surface
+- kilogramme(s) / kg / masse
+- litre(s) / l / volume
+- tonne(s) / t / masse
+
+### 2. Schema "prix" (ENRICHIR L'EXISTANT)
+
+#### Table : fournisseurs (existante, à conserver)
+Liste des fournisseurs Filtreplante.
+
+Structure actuelle à garder :
+- `id`, `nom`, `contact`, `telephone`, `email`, `adresse`
+- `statut_tva` (à utiliser comme défaut lors de création prix)
+- `actif`, `date_creation`, etc.
+
+#### Table : prix_fournisseurs (à enrichir/recréer)
+Association produit ↔ fournisseur avec prix et régime fiscal.
+
+Colonnes :
+- `id` : SERIAL PRIMARY KEY
+
+**Relations :**
+- `produit_master_id` : INTEGER REFERENCES referentiel.produits_master(id) NOT NULL
+- `fournisseur_id` : INTEGER REFERENCES prix.fournisseurs(id) NOT NULL
+
+**Prix :**
+- `prix_ht` : REAL NOT NULL (prix hors taxes en FCFA)
+
+**Régime fiscal :**
+- `regime_fiscal` : TEXT NOT NULL DEFAULT 'tva_18'
+  - Valeurs : "tva_18" | "sans_tva" | "brs_5"
+  - "tva_18" : TVA 18% (fournisseurs formels)
+  - "sans_tva" : Pas de TVA (boutiques informelles)
+  - "brs_5" : BRS 5% (retenue à la source)
+
+**Prix calculés (stockés pour performance) :**
+- `prix_ttc` : REAL (= prix_ht × 1.18 si TVA, = prix_ht si sans TVA, NULL si BRS)
+- `prix_brs` : REAL (= prix_ht / 0.95 si BRS, NULL sinon)
+
+**Fournisseur par défaut :**
+- `est_fournisseur_defaut` : BOOLEAN NOT NULL DEFAULT false
+  - Contrainte : 1 seul fournisseur par défaut par produit (logique métier)
+  - Si 1er fournisseur ajouté → automatiquement par défaut
+
+**Métadonnées :**
+- `actif` : BOOLEAN NOT NULL DEFAULT true
+- `date_creation` : TIMESTAMP NOT NULL DEFAULT NOW()
+- `date_modification` : TIMESTAMP NOT NULL DEFAULT NOW()
+- `cree_par` : TEXT (username)
+
+**Index :**
+- Index sur `produit_master_id`, `fournisseur_id`
+- Index sur `est_fournisseur_defaut`
+- UNIQUE sur (produit_master_id, fournisseur_id) pour éviter doublons
+
+#### Table : historique_prix (NOUVELLE)
+Historique de toutes les modifications de prix.
+
+Colonnes :
+- `id` : SERIAL PRIMARY KEY
+- `prix_fournisseur_id` : INTEGER REFERENCES prix.prix_fournisseurs(id) NOT NULL
+- `prix_ht_ancien` : REAL
+- `prix_ht_nouveau` : REAL NOT NULL
+- `regime_fiscal_ancien` : TEXT
+- `regime_fiscal_nouveau` : TEXT NOT NULL
+- `modifie_par` : TEXT (username)
+- `date_modification` : TIMESTAMP NOT NULL DEFAULT NOW()
+- `raison` : TEXT (optionnel, ex: "Négociation fournisseur")
+
+**Trigger PostgreSQL** : À créer pour alimenter automatiquement lors d'un UPDATE sur prix_fournisseurs
+
+### 3. Extension PostgreSQL requise
+Activer l'extension `pg_trgm` pour la recherche intelligente :
+```sql
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+```
+
+## 🧠 DÉTECTION INTELLIGENTE DES DOUBLONS
+
+### Niveau 1 : Normalisation
+Fonction utilitaire `normaliserNom(nom: string): string`
+
+Transformations :
+1. Convertir en minuscules
+2. Supprimer accents (é → e, à → a)
+3. Supprimer ponctuation (- . , : ; ! ?)
+4. Supprimer espaces multiples → espace unique
+5. Trier les mots alphabétiquement
+6. Trim()
+
+Exemples :
+- "Tuyau PVC PN10 DN63" → "50 dn63 pn10 pvc tuyau"
+- "TUYAU PVC Ø50" → "50 pvc tuyau"
+- "Canalisation PVC DN50" → "50 canalisation dn pvc"
+
+### Niveau 3 : Règles métier
+Fonction `rechercherProduitsSimilaires(nom: string, categorie: string): produit[]`
+
+Étapes :
+1. Normaliser le nom saisi
+2. Chercher dans `produits_master` de la même catégorie avec :
+   - Trigrams PostgreSQL : `similarity(nom_normalise, :nom) > 0.7`
+   - Ordre par score de similarité DESC
+   - Limite 5 résultats
+
+Requête SQL exemple :
+```sql
+SELECT *, similarity(nom_normalise, 'tuyau pvc 50mm') AS score
+FROM referentiel.produits_master
+WHERE categorie = :categorie
+  AND actif = true
+  AND similarity(nom_normalise, 'tuyau pvc 50mm') > 0.7
+ORDER BY score DESC
+LIMIT 5;
+```
+
+### Workflow création produit
+1. User remplit le formulaire (nom, catégorie, unité)
+2. En temps réel (au blur du champ "nom") : appeler `rechercherProduitsSimilaires`
+3. Si résultats > 0 : afficher un bandeau d'alerte
+4. User peut choisir :
+   - "Utiliser un produit existant" (annule la création)
+   - "Créer quand même" (continue avec doublon accepté)
+
+## 💰 LOGIQUE MÉTIER PRIX/FOURNISSEURS
+
+### Fonction : Calcul automatique prix
+Fonction `calculerPrix(prixHt: number, regimeFiscal: string)`
+
+```typescript
+function calculerPrix(prixHt: number, regimeFiscal: string) {
+  switch (regimeFiscal) {
+    case "tva_18":
+      return {
+        prixHt,
+        prixTtc: Math.round(prixHt * 1.18),
+        prixBrs: null,
+      };
+    
+    case "sans_tva":
+      return {
+        prixHt,
+        prixTtc: prixHt,
+        prixBrs: null,
+      };
+    
+    case "brs_5":
+      return {
+        prixHt,
+        prixTtc: null,
+        prixBrs: Math.round(prixHt / 0.95),
+      };
+    
+    default:
+      throw new Error(`Régime fiscal inconnu: ${regimeFiscal}`);
+  }
+}
+```
+
+À appliquer automatiquement lors de la création/modification d'un prix.
+
+### Fonction : Gestion fournisseur par défaut
+Fonction `definirFournisseurParDefaut(produitId: number, prixFournisseurId: number)`
+
+Logique :
+1. Retirer le flag `est_fournisseur_defaut` de tous les prix de ce produit
+2. Définir `est_fournisseur_defaut = true` pour le prix sélectionné
+
+```typescript
+async function definirFournisseurParDefaut(produitId: number, prixFournisseurId: number) {
+  // 1. Retirer des autres
+  await db
+    .update(prixFournisseurs)
+    .set({ estFournisseurDefaut: false })
+    .where(eq(prixFournisseurs.produitMasterId, produitId));
+  
+  // 2. Définir le nouveau
+  await db
+    .update(prixFournisseurs)
+    .set({ 
+      estFournisseurDefaut: true,
+      dateModification: new Date(),
+    })
+    .where(eq(prixFournisseurs.id, prixFournisseurId));
+}
+```
+
+### Fonction : Ajout prix fournisseur
+Fonction `ajouterPrixFournisseur(data)`
+
+Logique spéciale :
+1. Si c'est le 1er fournisseur pour ce produit → automatiquement par défaut
+2. Calculer prix_ttc/prix_brs selon regime_fiscal
+3. Créer l'entrée dans `prix_fournisseurs`
+
+```typescript
+async function ajouterPrixFournisseur(data: {
+  produitMasterId: number;
+  fournisseurId: number;
+  prixHt: number;
+  regimeFiscal: string;
+  estFournisseurDefaut?: boolean;
+}) {
+  // 1. Compter fournisseurs existants
+  const nbFournisseurs = await db
+    .select({ count: count() })
+    .from(prixFournisseurs)
+    .where(
+      and(
+        eq(prixFournisseurs.produitMasterId, data.produitMasterId),
+        eq(prixFournisseurs.actif, true)
+      )
+    );
+  
+  // 2. 1er fournisseur = par défaut automatiquement
+  const estDefaut = nbFournisseurs.count === 0 ? true : (data.estFournisseurDefaut || false);
+  
+  // 3. Si nouveau par défaut → retirer des autres
+  if (estDefaut) {
+    await definirFournisseurParDefaut(data.produitMasterId, -1); // Reset tous
+  }
+  
+  // 4. Calculer prix
+  const { prixTtc, prixBrs } = calculerPrix(data.prixHt, data.regimeFiscal);
+  
+  // 5. Insérer
+  const [nouveauPrix] = await db.insert(prixFournisseurs).values({
+    produitMasterId: data.produitMasterId,
+    fournisseurId: data.fournisseurId,
+    prixHt: data.prixHt,
+    regimeFiscal: data.regimeFiscal,
+    prixTtc,
+    prixBrs,
+    estFournisseurDefaut: estDefaut,
+    actif: true,
+  }).returning();
+  
+  return nouveauPrix;
+}
+```
+
+### Trigger : Historique prix
+Trigger PostgreSQL sur `UPDATE` de `prix_fournisseurs`
+
+```sql
+CREATE OR REPLACE FUNCTION enregistrer_historique_prix()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF OLD.prix_ht != NEW.prix_ht OR OLD.regime_fiscal != NEW.regime_fiscal THEN
+    INSERT INTO prix.historique_prix (
+      prix_fournisseur_id,
+      prix_ht_ancien,
+      prix_ht_nouveau,
+      regime_fiscal_ancien,
+      regime_fiscal_nouveau,
+      date_modification
+    ) VALUES (
+      NEW.id,
+      OLD.prix_ht,
+      NEW.prix_ht,
+      OLD.regime_fiscal,
+      NEW.regime_fiscal,
+      NOW()
+    );
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_historique_prix
+AFTER UPDATE ON prix.prix_fournisseurs
+FOR EACH ROW
+EXECUTE FUNCTION enregistrer_historique_prix();
+```
+
+## 🔄 MIGRATION DES DONNÉES EXISTANTES
+
+### Étape 1 : Import depuis CSV Stock
+Script de migration à créer dans `db/migrations/001_import_csv_stock.ts`
+
+Process :
+1. Lire le fichier CSV fourni (products.csv avec 200+ produits)
+2. Pour chaque ligne :
+   - Extraire : nom, categorie, sous_section, unite, longueur, largeur, couleur, est_template
+   - Normaliser le nom → `nom_normalise`
+   - Insérer dans `produits_master` avec :
+     - `est_stockable = true` (tous les produits Stock sont stockables)
+     - `source_app = "stock"`
+     - `actif = true`
+     - `cree_par = "migration_csv"`
+
+3. Extraire les catégories uniques → insérer dans `categories`
+4. Extraire les unités uniques → insérer dans `unites`
+
+**Gestion des doublons** : Ignorer (SKIP) si `nom` existe déjà (via UNIQUE constraint)
+
+### Étape 2 : Nettoyer les anciennes données Prix
+Si des produits existent déjà dans l'ancienne structure Prix :
+- Les supprimer (données de test confirmées invalides par Michael)
+- Garder uniquement la table `fournisseurs` si déjà peuplée
+
+## 🎨 INTERFACE UTILISATEUR
+
+### Page : Liste produits
+Fichier : `client/src/pages/ProduitsPage.tsx`
+
+Affichage tableau :
+- Colonnes : Nom, Catégorie, Unité, Est stockable, Fournisseur défaut, Prix défaut, Actions
+- Colonne "Prix défaut" : 
+  - Si pas de fournisseur : "Prix non renseigné" (texte gris)
+  - Si fournisseur par défaut : "5 900 FCFA TTC (Fournisseur A)"
+- Filtres : Catégorie, Est stockable, Avec/sans prix
+
+### Page : Détail produit
+Fichier : `client/src/pages/ProduitDetailPage.tsx`
+
+Structure :
+1. **Section Informations produit**
+   - Nom, catégorie, unité, stockable, etc.
+   - Bouton [Modifier]
+
+2. **Section Fournisseurs et prix**
+   - Liste des fournisseurs avec leurs prix
+   - Design : Cards avec highlight pour le fournisseur par défaut (étoile ⭐)
+   - Bouton [+ Ajouter un fournisseur]
+
+Exemple card fournisseur :
+```
+┌─────────────────────────────────────────────┐
+│ ⭐ Fournisseur A (par défaut)               │
+├─────────────────────────────────────────────┤
+│ Prix HT : 5 000 FCFA                        │
+│ Régime : TVA 18%                            │
+│ Prix TTC : 5 900 FCFA                       │
+│                                             │
+│ Dernière modification : 12/01/2026          │
+│                                             │
+│ [Modifier] [Retirer par défaut] [Historique]│
+└─────────────────────────────────────────────┘
+```
+
+Card fournisseur non-défaut :
+```
+┌─────────────────────────────────────────────┐
+│ Fournisseur B                               │
+├─────────────────────────────────────────────┤
+│ Prix HT : 4 800 FCFA                        │
+│ Régime : BRS 5%                             │
+│ Prix BRS : 5 053 FCFA                       │
+│                                             │
+│ [Modifier] [Définir par défaut] [Historique]│
+└─────────────────────────────────────────────┘
+```
+
+### Composant : Formulaire création produit
+Fichier : `client/src/components/ProduitForm.tsx`
+
+Champs :
+- **Catégorie** : Autocomplete/Select (liste depuis `categories`)
+- **Nom** : Input texte avec recherche similarité en temps réel
+- **Unité** : Select (liste depuis `unites`)
+- **Est stockable** : Checkbox (défaut selon source_app)
+- **Attributs optionnels** : Longueur, largeur, couleur (si catégorie contient "Géomembrane")
+
+Validation :
+- Nom obligatoire, unique
+- Catégorie et unité obligatoires
+
+### Composant : Bandeau alerte doublons
+Fichier : `client/src/components/ProduitSimilaireAlert.tsx`
+
+Affichage si produits similaires détectés (similarité > 70%) :
+```
+⚠️ Produits similaires trouvés :
+
+🔸 Tuyau PVC PN10 DN50 (Plomberie-Tuyauterie)
+   Créé le 12/01/2026 | Stockable : Oui
+   [Utiliser ce produit]
+
+🔸 Tube PVC diamètre 50 (Plomberie-Tuyauterie)
+   Créé le 05/02/2026 | Stockable : Non
+   [Utiliser ce produit]
+
+[Aucun ne correspond, créer nouveau produit]
+```
+
+Design : Utiliser shadcn/ui Alert avec variante "warning"
+
+### Modal : Ajouter prix fournisseur
+Fichier : `client/src/components/AjouterPrixModal.tsx`
+
+Formulaire :
+- **Fournisseur** : Select (liste depuis `fournisseurs`, actifs uniquement)
+- **Prix HT** : Input number avec suffixe "FCFA"
+- **Régime fiscal** : Radio buttons
+  - ⚪ TVA 18% (défaut)
+  - ⚪ Sans TVA (informel)
+  - ⚪ BRS 5% (retenue à la source)
+- **Prix calculé** : Affichage dynamique (readonly) selon régime
+  - Si TVA : "Prix TTC : 5 900 FCFA"
+  - Si Sans TVA : "Prix TTC : 5 000 FCFA"
+  - Si BRS : "Prix BRS : 5 263 FCFA"
+- **Définir par défaut** : Checkbox (désactivée si déjà 1 fournisseur par défaut)
+
+Validation :
+- Vérifier que ce fournisseur n'existe pas déjà pour ce produit
+- Prix HT > 0
+
+### Modal : Historique prix
+Fichier : `client/src/components/HistoriquePrixModal.tsx`
+
+Affichage :
+- Timeline des modifications (ordre chronologique inverse)
+- Afficher : Date, Prix ancien → Nouveau, Régime ancien → Nouveau, Modifié par
+
+Exemple :
+```
+📅 20/02/2026 14:30
+   Prix HT : 4 500 FCFA → 5 000 FCFA
+   Régime : TVA 18% (inchangé)
+   Modifié par : michael@filtreplante.com
+
+📅 15/01/2026 10:15
+   Prix HT : 4 000 FCFA → 4 500 FCFA
+   Régime : Sans TVA → TVA 18%
+   Modifié par : admin@filtreplante.com
+```
+
+## 🔌 API REST (endpoints referentiel + prix)
+
+### GET /api/referentiel/produits
+Liste tous les produits.
+
+Query params :
+- `stockable` : boolean (filtre)
+- `categorie` : string (filtre)
+- `actif` : boolean (défaut true)
+- `avec_prix` : boolean (inclure prix fournisseur par défaut)
+
+Response :
+```json
+{
+  "produits": [
+    {
+      "id": 1,
+      "nom": "Tuyau PVC PN10 DN63",
+      "categorie": "Plomberie-Tuyauterie",
+      "unite": "mètre(s)",
+      "est_stockable": true,
+      "actif": true,
+      "fournisseur_defaut": {
+        "id": 5,
+        "nom": "Fournisseur A",
+        "prix_ht": 5000,
+        "prix_ttc": 5900,
+        "regime_fiscal": "tva_18"
+      }
+    }
+  ]
+}
+```
+
+### GET /api/referentiel/produits/:id
+Détail produit avec tous ses fournisseurs.
+
+Response :
+```json
+{
+  "produit": {
+    "id": 1,
+    "nom": "Tuyau PVC PN10 DN63",
+    "categorie": "Plomberie-Tuyauterie",
+    "unite": "mètre(s)",
+    "est_stockable": true,
+    "prix_fournisseurs": [
+      {
+        "id": 10,
+        "fournisseur": {
+          "id": 5,
+          "nom": "Fournisseur A"
+        },
+        "prix_ht": 5000,
+        "prix_ttc": 5900,
+        "regime_fiscal": "tva_18",
+        "est_fournisseur_defaut": true,
+        "date_modification": "2026-01-12T10:30:00Z"
+      },
+      {
+        "id": 11,
+        "fournisseur": {
+          "id": 8,
+          "nom": "Fournisseur B"
+        },
+        "prix_ht": 4800,
+        "prix_brs": 5053,
+        "regime_fiscal": "brs_5",
+        "est_fournisseur_defaut": false,
+        "date_modification": "2026-02-05T14:20:00Z"
+      }
+    ]
+  }
+}
+```
+
+### GET /api/referentiel/produits/search
+Recherche intelligente avec détection similarité.
+
+Query params :
+- `q` : string (nom à rechercher)
+- `categorie` : string (filtre optionnel)
+
+Response :
+```json
+{
+  "resultats": [
+    {
+      "id": 1,
+      "nom": "Tuyau PVC PN10 DN63",
+      "score": 0.95,
+      "categorie": "Plomberie-Tuyauterie"
+    }
+  ]
+}
+```
+
+### POST /api/referentiel/produits
+Créer un produit.
+
+Body :
+```json
+{
+  "nom": "Tuyau PVC PN10 DN63",
+  "categorie": "Plomberie-Tuyauterie",
+  "unite": "mètre(s)",
+  "est_stockable": true,
+  "longueur": null,
+  "largeur": null,
+  "couleur": null
+}
+```
+
+Validation :
+1. Vérifier que `nom` n'existe pas déjà (UNIQUE)
+2. Vérifier que `categorie` existe dans `categories`
+3. Vérifier que `unite` existe dans `unites`
+4. Normaliser le nom → `nom_normalise`
+
+Response : 201 Created avec l'objet produit créé
+
+### PATCH /api/referentiel/produits/:id/stockable
+Passer un produit en stockable (utilisé par Stock).
+
+Body :
+```json
+{
+  "est_stockable": true
+}
+```
+
+Authorization : Scope `stock:write` requis
+
+### POST /api/prix/produits/:id/fournisseurs
+Ajouter un prix fournisseur à un produit.
+
+Body :
+```json
+{
+  "fournisseur_id": 5,
+  "prix_ht": 5000,
+  "regime_fiscal": "tva_18",
+  "est_fournisseur_defaut": false
+}
+```
+
+Logique :
+- Calculer automatiquement prix_ttc ou prix_brs
+- Si 1er fournisseur → par défaut automatiquement
+- Si `est_fournisseur_defaut = true` → retirer des autres
+
+Response : 201 Created
+
+### PATCH /api/prix/fournisseurs/:id
+Modifier un prix fournisseur.
+
+Body :
+```json
+{
+  "prix_ht": 5200,
+  "regime_fiscal": "tva_18"
+}
+```
+
+Logique :
+- Recalculer prix_ttc/prix_brs
+- Enregistrer dans historique (via trigger PostgreSQL)
+
+Response : 200 OK
+
+### PATCH /api/prix/fournisseurs/:id/defaut
+Définir comme fournisseur par défaut.
+
+Body : vide
+
+Logique :
+- Retirer le flag des autres fournisseurs du même produit
+- Définir ce fournisseur en par défaut
+
+Response : 200 OK
+
+### GET /api/prix/fournisseurs/:id/historique
+Historique prix d'un fournisseur.
+
+Response :
+```json
+{
+  "historique": [
+    {
+      "date_modification": "2026-02-20T14:30:00Z",
+      "prix_ht_ancien": 4500,
+      "prix_ht_nouveau": 5000,
+      "regime_fiscal_ancien": "tva_18",
+      "regime_fiscal_nouveau": "tva_18",
+      "modifie_par": "michael@filtreplante.com"
+    }
+  ]
+}
+```
+
+### GET /api/referentiel/categories
+Liste des catégories.
+
+Response :
+```json
+{
+  "categories": [
+    { "id": 1, "nom": "Plomberie-Tuyauterie" },
+    { "id": 2, "nom": "Outillage-Autres" }
+  ]
+}
+```
+
+### GET /api/referentiel/unites
+Liste des unités.
+
+Response :
+```json
+{
+  "unites": [
+    { "code": "m", "libelle": "mètre(s)", "type": "longueur" },
+    { "code": "u", "libelle": "unité(s)", "type": "quantité" }
+  ]
+}
+```
+
+## 🔐 AUTHENTIFICATION & SCOPES
+
+### Système de scopes
+Enrichir la gestion des clés API existantes avec scopes.
+
+Table : `api_keys` (à enrichir si existe, sinon créer)
+- `id` : SERIAL PRIMARY KEY
+- `key` : TEXT UNIQUE NOT NULL (clé générée)
+- `nom` : TEXT (ex: "Clé Stock")
+- `scopes` : TEXT[] (array de scopes PostgreSQL)
+- `actif` : BOOLEAN DEFAULT true
+- `date_creation` : TIMESTAMP DEFAULT NOW()
+- `date_expiration` : TIMESTAMP (nullable)
+
+Scopes définis :
+- `referentiel:read` : Lire produits/catégories/unités
+- `referentiel:write` : Créer/modifier produits
+- `stock:read` : Lire données stock (futur)
+- `stock:write` : Modifier données stock (futur)
+- `prix:read` : Lire prix fournisseurs (tous users)
+- `prix:read:admin` : Lire prix avec détails coûts (admin uniquement)
+- `prix:write` : Créer/modifier prix
+
+### Middleware validation scopes
+Fichier : `server/middleware/checkScope.ts`
+
+Fonction `requireScope(scope: string)` :
+```typescript
+export function requireScope(scope: string) {
+  return async (req, res, next) => {
+    const apiKey = req.headers['x-api-key'];
+    
+    if (!apiKey) {
+      return res.status(401).json({ error: 'API key manquante' });
+    }
+    
+    const keyData = await db
+      .select()
+      .from(apiKeys)
+      .where(and(
+        eq(apiKeys.key, apiKey),
+        eq(apiKeys.actif, true)
+      ))
+      .limit(1);
+    
+    if (!keyData.length) {
+      return res.status(401).json({ error: 'API key invalide' });
+    }
+    
+    const { scopes } = keyData[0];
+    if (!scopes.includes(scope)) {
+      return res.status(403).json({ error: `Scope requis: ${scope}` });
+    }
+    
+    req.apiKeyData = keyData[0];
+    next();
+  };
+}
+```
+
+Exemple usage :
+```typescript
+app.get('/api/referentiel/produits', requireScope('referentiel:read'), async (req, res) => {
+  // ...
+});
+
+app.post('/api/prix/produits/:id/fournisseurs', requireScope('prix:write'), async (req, res) => {
+  // ...
+});
+```
+
+### Génération clés API
+Endpoint admin : `POST /api/admin/api-keys`
+
+Body :
+```json
+{
+  "nom": "Clé Stock",
+  "scopes": ["referentiel:read", "referentiel:write", "stock:write"]
+}
+```
+
+Générer une clé aléatoire sécurisée (ex: avec `crypto.randomBytes`).
+
+## 📄 DOCUMENTATION
+
+### README.md à enrichir
+Section à ajouter :
+
+```markdown
+## Référentiel Produits Filtreplante
+
+Cette application héberge le référentiel centralisé des produits Filtreplante avec gestion multi-fournisseurs.
+
+### Schemas de base de données
+- `referentiel` : Produits, catégories, unités (partagé entre apps)
+- `prix` : Fournisseurs et prix avec régimes fiscaux (spécifique)
+- `stock` : Données de stock (app GestionStockFP)
+
+### Apps connectées
+- **GestionStockFP** : Lit/écrit dans `referentiel`, gère le stock physique
+- **Futures apps** : Calculateur devis, Maintenance, etc.
+
+### Règles d'isolation
+⚠️ **IMPORTANT** : Chaque app ne doit toucher QUE ses schemas + referentiel.
+Ne JAMAIS modifier directement les schemas des autres apps.
+
+### Régimes fiscaux Sénégal
+- **TVA 18%** : Fournisseurs formels (Prix TTC = HT × 1.18)
+- **Sans TVA** : Boutiques informelles (Prix TTC = HT)
+- **BRS 5%** : Retenue à la source (Prix BRS = HT / 0.95)
+
+### Détection doublons
+Utilise PostgreSQL trigrams + normalisation intelligente pour détecter les produits similaires (seuil 70%).
+
+### API REST
+Endpoints disponibles avec authentification par clé API + scopes :
+- `/api/referentiel/*` : Gestion produits/catégories/unités
+- `/api/prix/*` : Gestion prix fournisseurs
+- Voir documentation complète dans `/docs/api.md`
+```
+
+### Fichier : docs/api.md
+Documentation complète des endpoints API (format Markdown).
+
+## ⚠️ POINTS D'ATTENTION
+
+### Backward compatibility
+- Toujours AJOUTER des colonnes (nullable)
+- Jamais RENOMMER ni SUPPRIMER
+- Si besoin de changer : créer nouvelle colonne + migration progressive
+
+### Performance
+- Les index trigrams peuvent être lents sur gros volumes (> 10k produits)
+- Limiter la recherche similarité à 5 résultats max
+- Index sur `produit_master_id` et `est_fournisseur_defaut` critiques
+
+### Migrations coordonnées
+Ce Repl héberge la base de données. Toute migration impacte potentiellement :
+- GestionStockFP
+- Futures apps
+
+**Process** : Avant chaque migration Drizzle, vérifier l'impact sur les autres apps dans le canal Slack #dev-filtreplante.
+
+### Contrainte fournisseur par défaut
+Un seul fournisseur par défaut par produit. À gérer via :
+- Logique métier (dans les fonctions ajout/modification)
+- Possibilité d'ajouter constraint CHECK PostgreSQL (optionnel)
+
+### Calculs prix
+- Arrondir les prix TTC/BRS à l'entier (FCFA)
+- Toujours recalculer lors de la modification (pas de stockage incohérent)
+
+### Historique prix
+- Trigger PostgreSQL enregistre automatiquement
+- Pas de suppression d'historique (sauf GDPR)
+- Utile pour audit et négociations fournisseurs
+
+## ✅ CHECKLIST DE VALIDATION
+
+Avant de considérer cette tâche terminée, vérifier :
+
+### Base de données
+- [ ] Extension `pg_trgm` activée
+- [ ] Schemas `referentiel` et `prix` créés
+- [ ] Tables `produits_master`, `categories`, `unites` créées avec index
+- [ ] Table `prix_fournisseurs` créée avec colonnes régime fiscal
+- [ ] Table `historique_prix` créée
+- [ ] Trigger historique prix fonctionnel
+- [ ] Migration CSV Stock exécutée (~200 produits importés)
+- [ ] Catégories et unités peuplées
+
+### Détection intelligente
+- [ ] Fonction `normaliserNom` testée avec exemples
+- [ ] Recherche trigrams fonctionne (similarité > 70%)
+- [ ] Bandeau alerte doublons s'affiche lors de la création
+
+### Logique métier prix
+- [ ] Calcul automatique TTC/BRS selon régime fiscal
+- [ ] 1er fournisseur = par défaut automatiquement
+- [ ] Définir nouveau par défaut retire l'ancien
+- [ ] Historique enregistré lors modification prix
+
+### API REST
+- [ ] Endpoints `GET /api/referentiel/produits` fonctionnel avec filtre `avec_prix`
+- [ ] Endpoint `GET /api/referentiel/produits/:id` retourne tous fournisseurs
+- [ ] Endpoint `POST /api/prix/produits/:id/fournisseurs` avec validation
+- [ ] Endpoint `PATCH /api/prix/fournisseurs/:id/defaut` bascule le flag
+- [ ] Endpoint `GET /api/prix/fournisseurs/:id/historique` retourne timeline
+- [ ] Scopes API implémentés et testés
+
+### Interface utilisateur
+- [ ] Page liste produits avec colonne "Prix défaut"
+- [ ] Affichage "Prix non renseigné" si pas de fournisseur
+- [ ] Page détail produit avec cards fournisseurs
+- [ ] Highlight fournisseur par défaut (étoile ⭐)
+- [ ] Modal ajout prix avec calcul dynamique TTC/BRS
+- [ ] Boutons "Définir par défaut" / "Retirer par défaut"
+- [ ] Modal historique prix avec timeline
+- [ ] Formulaire création produit avec détection doublons
+
+### Documentation
+- [ ] README enrichi avec sections Référentiel et Régimes fiscaux
+- [ ] Fichier `docs/api.md` créé avec endpoints documentés
+- [ ] Commentaires dans le code sur règles d'isolation
+
+## 🚀 NEXT STEPS (après ce brief)
+
+Une fois ce Brief 1 terminé :
+- **Brief 2** : Connecter GestionStockFP au référentiel
+- **Brief 3** : Modal intelligent "Passer en stockable" dans Stock
+- **Brief 4** : API pour Calculateur/Devis (lecture prix fournisseur défaut)

@@ -3,6 +3,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { seedDatabase } from "./seed";
+import { setupDatabase, createTrigger } from "./setupDb";
 
 const app = express();
 const httpServer = createServer(app);
@@ -61,11 +62,12 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // Seed database with initial data
   try {
+    await setupDatabase();
     await seedDatabase();
+    await createTrigger();
   } catch (error) {
-    console.error("Error seeding database:", error);
+    console.error("Error setting up database:", error);
   }
 
   await registerRoutes(httpServer, app);
