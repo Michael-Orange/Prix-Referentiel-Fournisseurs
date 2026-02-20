@@ -1,0 +1,222 @@
+# BRIEF CORRECTIF : Prix - Historique et Tri
+
+## 🎯 MODIFICATIONS
+
+### 1. RETIRER LE BOUTON "MODIFIER" POUR LES PRIX
+
+**Problème actuel :** Il y a un bouton "Modifier" sur chaque carte fournisseur.
+
+**Solution :** Supprimer ce bouton.
+
+**Logique métier :**
+- On ne modifie JAMAIS un prix existant
+- On ajoute toujours un NOUVEAU prix qui remplace l'ancien
+- L'ancien prix reste dans l'historique (via trigger PostgreSQL)
+
+**UI souhaitée :**
+
+```
+┌─────────────────────────────────────────┐
+│ ABC Matériaux ⭐                         │
+│ TVA 18%                                 │
+│ 20 000 FCFA HT                          │
+│ 23 600 FCFA TTC                         │
+│                                         │
+│ [Historique]                            │  ← Garder uniquement Historique
+└─────────────────────────────────────────┘
+```
+
+**Workflow :**
+1. User clique "Ajouter" (bouton en haut à droite)
+2. Si le fournisseur existe déjà → Message : "Ce fournisseur a déjà un prix. Un nouveau prix sera créé et l'ancien restera dans l'historique."
+3. Le nouveau prix créé → ancien prix désactivé automatiquement (`actif = false`)
+4. Trigger PostgreSQL enregistre dans `historique_prix`
+
+**Code à modifier :**
+
+Dans la route `POST /api/prix/produits/:id/fournisseurs` :
+- Si fournisseur existe déjà pour ce produit → Désactiver l'ancien (`actif = false`)
+- Créer le nouveau prix (`actif = true`)
+- Le trigger enregistrera automatiquement la transition dans `historique_prix`
+
+---
+
+### 2. AJOUTER COLONNE "DERNIÈRE MISE À JOUR" DANS LE TABLEAU
+
+**Problème actuel :** La colonne "Créé par" affiche qui a créé, mais pas quand a eu lieu la dernière modification.
+
+**Solution :** Ajouter une colonne "Dernière mise à jour" entre "Prix final" et "Créé par".
+
+**UI souhaitée :**
+
+```
+┌─────────────┬──────────┬─────────┬──────────────┬────────┬──────────┬──────────────────┬───────────┐
+│ Produit     │ Catégorie│ Unité   │ Fournisseur  │ Prix HT│ Prix final│ Dernière MAJ    │ Créé par  │
+├─────────────┼──────────┼─────────┼──────────────┼────────┼──────────┼──────────────────┼───────────┤
+│ Bouteille   │ Clotûre  │ unité(s)│ ABC Matériaux│ 20 000 │ 23 600   │ 20/02/2026 14:30│ migration │
+│             │          │         │ TVA 18%      │        │ (TTC)    │                  │           │
+└─────────────┴──────────┴─────────┴──────────────┴────────┴──────────┴──────────────────┴───────────┘
+```
+
+**Données à afficher :**
+- Source : `prix_fournisseurs.date_modification`
+- Format : `dd/mm/yyyy hh:mm` (français)
+- Si jamais modifié : afficher la date de création (`date_creation`)
+
+**Backend :**
+Dans la query GET /api/referentiel/produits (avec prix), inclure `date_modification` :
+```typescript
+.select({
+  // ... autres champs
+  prixDateModification: prixFournisseurs.dateModification,
+})
+```
+
+---
+
+### 3. TRI PAR COLONNES (TITRES CLIQUABLES)
+
+**Problème actuel :** Le tableau ne peut pas être trié.
+
+**Solution :** Rendre les titres des colonnes cliquables pour permettre le tri.
+
+**Colonnes triables :**
+- ✅ **Produit** : Tri alphabétique (A-Z / Z-A)
+- ✅ **Catégorie** : Tri alphabétique
+- ✅ **Prix HT** : Tri numérique (croissant / décroissant)
+- ✅ **Prix final** : Tri numérique
+- ✅ **Dernière MAJ** : Tri chronologique (plus récent / plus ancien)
+- ✅ **Créé par** : Tri alphabétique
+
+**UI souhaitée :**
+
+Titres avec icône de tri :
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Produit ↕  Catégorie ↕  Prix HT ↕  Dernière MAJ ↕  Créé par ↕ │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+Après clic (tri actif) :
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Produit ▲  Catégorie ↕  Prix HT ↕  Dernière MAJ ↕  Créé par ↕ │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Comportement :**
+1. Clic 1 : Tri ascendant (A-Z, 0-9, ancien→récent) → Icône ▲
+2. Clic 2 : Tri descendant (Z-A, 9-0, récent→ancien) → Icône ▼
+3. Clic 3 : Retour à l'ordre par défaut → Icône ↕
+
+**Implémentation :**
+
+Utiliser shadcn/ui Table avec tri intégré ou implémenter manuellement :
+
+```typescript
+const [sortConfig, setSortConfig] = useState<{
+  key: string;
+  direction: 'asc' | 'desc' | null;
+}>({ key: '', direction: null });
+
+const handleSort = (key: string) => {
+  let direction: 'asc' | 'desc' | null = 'asc';
+  
+  if (sortConfig.key === key) {
+    if (sortConfig.direction === 'asc') direction = 'desc';
+    else if (sortConfig.direction === 'desc') direction = null;
+  }
+  
+  setSortConfig({ key, direction });
+};
+
+const sortedProduits = useMemo(() => {
+  if (!sortConfig.direction) return produits;
+  
+  return [...produits].sort((a, b) => {
+    let aVal = a[sortConfig.key];
+    let bVal = b[sortConfig.key];
+    
+    // Gestion dates
+    if (sortConfig.key === 'dateModification') {
+      aVal = new Date(aVal).getTime();
+      bVal = new Date(bVal).getTime();
+    }
+    
+    // Gestion prix
+    if (sortConfig.key === 'prixHt' || sortConfig.key === 'prixFinal') {
+      aVal = parseFloat(aVal) || 0;
+      bVal = parseFloat(bVal) || 0;
+    }
+    
+    if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+    if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+    return 0;
+  });
+}, [produits, sortConfig]);
+```
+
+**Composant titre de colonne :**
+```tsx
+<TableHead
+  onClick={() => handleSort('nom')}
+  className="cursor-pointer hover:bg-gray-50"
+>
+  <div className="flex items-center space-x-1">
+    <span>Produit</span>
+    {sortConfig.key === 'nom' ? (
+      sortConfig.direction === 'asc' ? <ChevronUp size={16} /> : <ChevronDown size={16} />
+    ) : (
+      <ChevronsUpDown size={16} className="text-gray-400" />
+    )}
+  </div>
+</TableHead>
+```
+
+**Icônes Lucide :**
+- `ChevronsUpDown` : État neutre (↕)
+- `ChevronUp` : Tri ascendant (▲)
+- `ChevronDown` : Tri descendant (▼)
+
+---
+
+## ✅ CHECKLIST DE VALIDATION
+
+**Modification prix :**
+- [ ] Bouton "Modifier" retiré des cartes fournisseur
+- [ ] Bouton "Ajouter" crée un nouveau prix (désactive l'ancien si doublon)
+- [ ] L'ancien prix reste visible dans l'historique
+- [ ] Trigger PostgreSQL enregistre la transition
+
+**Colonne Dernière MAJ :**
+- [ ] Colonne "Dernière mise à jour" visible dans le tableau
+- [ ] Affiche `date_modification` au format français
+- [ ] Si jamais modifié, affiche `date_creation`
+
+**Tri par colonnes :**
+- [ ] Titres de colonnes cliquables (curseur pointer)
+- [ ] Icônes de tri visibles (↕ ▲ ▼)
+- [ ] Tri Produit A-Z / Z-A fonctionne
+- [ ] Tri Prix HT croissant / décroissant fonctionne
+- [ ] Tri Dernière MAJ récent / ancien fonctionne
+- [ ] Clic 3x sur une colonne → retour ordre par défaut
+
+**Tests :**
+- [ ] Trier par "Produit" : ordre alphabétique correct
+- [ ] Trier par "Prix HT" : ordre numérique correct (pas alphabétique !)
+- [ ] Trier par "Dernière MAJ" : ordre chronologique correct
+- [ ] Ajouter un nouveau prix pour un fournisseur existant → ancien désactivé, historique OK
+
+---
+
+## 🎨 DESIGN
+
+**Titres cliquables :**
+- Hover : fond gris clair (`hover:bg-gray-50`)
+- Curseur : pointer
+- Icônes : taille 16px, gris clair quand inactif, turquoise (#3AA6B9) quand actif
+
+**Colonne Dernière MAJ :**
+- Police : même style que les autres colonnes
+- Format date : `20/02/2026 14:30` (français)
+- Largeur : ajuster pour que la date soit lisible (min-width: 150px)
