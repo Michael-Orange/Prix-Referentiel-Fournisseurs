@@ -1,11 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useSearch } from "wouter";
 import { PageHeader } from "@/components/page-header";
 import { DataTable } from "@/components/data-table";
 import { RegimeBadge } from "@/components/tva-badge";
 import { SearchInput } from "@/components/search-input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
@@ -43,6 +45,7 @@ import {
   StarOff,
   AlertTriangle,
   ArrowRight,
+  Pencil,
 } from "lucide-react";
 import type {
   ProduitWithPrixDefaut,
@@ -64,16 +67,24 @@ interface DuplicateResult {
 
 export default function Produits() {
   const { toast } = useToast();
+  const searchString = useSearch();
+  const urlParams = new URLSearchParams(searchString);
+  const categorieFromUrl = urlParams.get("categorie");
+
   const [search, setSearch] = useState("");
-  const [filterCategorie, setFilterCategorie] = useState<string>("all");
+  const [filterCategorie, setFilterCategorie] = useState<string>(categorieFromUrl || "all");
   const [filterPrix, setFilterPrix] = useState<string>("all");
+  const [filterStockable, setFilterStockable] = useState<string>("all");
 
   const [isProductDialogOpen, setIsProductDialogOpen] = useState(false);
   const [isPriceDialogOpen, setIsPriceDialogOpen] = useState(false);
+  const [isEditingPrice, setIsEditingPrice] = useState(false);
+  const [editingPrixId, setEditingPrixId] = useState<number | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [selectedProductId, setSelectedProductId] = useState<number | null>(null);
   const [historyPrixId, setHistoryPrixId] = useState<number | null>(null);
   const [duplicates, setDuplicates] = useState<DuplicateResult[]>([]);
+  const [duplicatePriceWarning, setDuplicatePriceWarning] = useState(false);
 
   const [productForm, setProductForm] = useState({
     nom: "",
@@ -137,6 +148,22 @@ export default function Produits() {
     },
   });
 
+  const toggleStockableMutation = useMutation({
+    mutationFn: async ({ id, estStockable }: { id: number; estStockable: boolean }) => {
+      return apiRequest("PATCH", `/api/referentiel/produits/${id}/stockable`, { est_stockable: estStockable });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/referentiel/produits"] });
+      if (selectedProductId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/referentiel/produits", selectedProductId] });
+      }
+      toast({ title: "Statut stockable mis à jour" });
+    },
+    onError: () => {
+      toast({ title: "Erreur", description: "Impossible de modifier le statut", variant: "destructive" });
+    },
+  });
+
   const addPriceMutation = useMutation({
     mutationFn: async ({ produitId, data }: { produitId: number; data: typeof priceForm }) => {
       return apiRequest("POST", `/api/prix/produits/${produitId}/fournisseurs`, data);
@@ -150,8 +177,11 @@ export default function Produits() {
       setIsPriceDialogOpen(false);
     },
     onError: (error: Error) => {
-      const msg = error.message.includes("409") ? "Ce fournisseur a déjà un prix pour ce produit" : "Impossible d'ajouter le prix";
-      toast({ title: "Erreur", description: msg, variant: "destructive" });
+      if (error.message.includes("409")) {
+        setDuplicatePriceWarning(true);
+      } else {
+        toast({ title: "Erreur", description: "Impossible d'ajouter le prix", variant: "destructive" });
+      }
     },
   });
 
@@ -205,7 +235,10 @@ export default function Produits() {
     const matchPrix = filterPrix === "all" ||
       (filterPrix === "avec" && p.fournisseurDefaut) ||
       (filterPrix === "sans" && !p.fournisseurDefaut);
-    return matchSearch && matchCategorie && matchPrix;
+    const matchStockable = filterStockable === "all" ||
+      (filterStockable === "oui" && p.estStockable) ||
+      (filterStockable === "non" && !p.estStockable);
+    return matchSearch && matchCategorie && matchPrix && matchStockable;
   });
 
   const prixCalc = calculerPrix(priceForm.prix_ht || 0, priceForm.regime_fiscal);
@@ -313,6 +346,16 @@ export default function Produits() {
             <SelectItem value="all">Tous</SelectItem>
             <SelectItem value="avec">Avec prix</SelectItem>
             <SelectItem value="sans">Sans prix</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={filterStockable} onValueChange={setFilterStockable}>
+          <SelectTrigger className="w-[180px]" data-testid="select-filter-stockable">
+            <SelectValue placeholder="Statut stockage" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Tous les statuts</SelectItem>
+            <SelectItem value="oui">Stockable</SelectItem>
+            <SelectItem value="non">Non stockable</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -430,77 +473,116 @@ export default function Produits() {
         </DialogContent>
       </Dialog>
 
-      {/* Add Price Dialog */}
-      <Dialog open={isPriceDialogOpen} onOpenChange={setIsPriceDialogOpen}>
+      {/* Add/Edit Price Dialog */}
+      <Dialog open={isPriceDialogOpen} onOpenChange={(open) => {
+        setIsPriceDialogOpen(open);
+        if (!open) { setIsEditingPrice(false); setEditingPrixId(null); setDuplicatePriceWarning(false); }
+      }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Ajouter un prix fournisseur</DialogTitle>
+            <DialogTitle>{isEditingPrice ? `Modifier le prix - ${fournisseurs.find((f: any) => f.id === priceForm.fournisseur_id)?.nom || ""}` : "Ajouter un prix fournisseur"}</DialogTitle>
             <DialogDescription>
               {selectedProduct ? `Pour: ${selectedProduct.nom}` : ""}
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={(e) => {
-            e.preventDefault();
-            if (selectedProductId && priceForm.fournisseur_id && priceForm.prix_ht > 0) {
-              addPriceMutation.mutate({ produitId: selectedProductId, data: priceForm });
-            }
-          }} className="space-y-4">
-            <div className="space-y-2">
-              <Label>Fournisseur *</Label>
-              <Select value={priceForm.fournisseur_id ? priceForm.fournisseur_id.toString() : ""} onValueChange={(v) => setPriceForm({ ...priceForm, fournisseur_id: parseInt(v) })}>
-                <SelectTrigger data-testid="select-price-fournisseur">
-                  <SelectValue placeholder="Choisir un fournisseur..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {fournisseurs.map((f: any) => (
-                    <SelectItem key={f.id} value={f.id.toString()}>{f.nom}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+
+          {duplicatePriceWarning && !isEditingPrice ? (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-orange-300 bg-orange-50 p-4">
+                <div className="flex items-center gap-2 text-orange-800 font-medium text-sm mb-2">
+                  <AlertTriangle className="h-4 w-4" />
+                  Ce fournisseur a déjà un prix pour ce produit
+                </div>
+                <p className="text-sm text-orange-700">
+                  Voulez-vous mettre à jour le prix existant ?
+                </p>
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => { setIsPriceDialogOpen(false); setDuplicatePriceWarning(false); }} data-testid="button-cancel-duplicate">Annuler</Button>
+                <Button type="button" onClick={() => {
+                  setDuplicatePriceWarning(false);
+                  const existingPrix = selectedProduct?.prixFournisseurs?.find(
+                    (pf) => pf.fournisseur.id === priceForm.fournisseur_id
+                  );
+                  if (existingPrix) {
+                    setIsEditingPrice(true);
+                    setEditingPrixId(existingPrix.id);
+                  }
+                }} data-testid="button-confirm-update">
+                  Oui, mettre à jour
+                </Button>
+              </DialogFooter>
             </div>
-
-            <div className="grid grid-cols-2 gap-4">
+          ) : (
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              if (isEditingPrice && editingPrixId) {
+                updatePriceMutation.mutate({ id: editingPrixId, data: { prix_ht: priceForm.prix_ht, regime_fiscal: priceForm.regime_fiscal } });
+              } else if (selectedProductId && priceForm.fournisseur_id && priceForm.prix_ht > 0) {
+                addPriceMutation.mutate({ produitId: selectedProductId, data: priceForm });
+              }
+            }} className="space-y-4">
               <div className="space-y-2">
-                <Label>Prix HT (FCFA) *</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={priceForm.prix_ht || ""}
-                  onChange={(e) => setPriceForm({ ...priceForm, prix_ht: parseFloat(e.target.value) || 0 })}
-                  placeholder="0"
-                  data-testid="input-price-ht"
-                />
+                <Label>Fournisseur *</Label>
+                {isEditingPrice ? (
+                  <Input value={fournisseurs.find((f: any) => f.id === priceForm.fournisseur_id)?.nom || ""} disabled data-testid="input-price-fournisseur-readonly" />
+                ) : (
+                  <Select value={priceForm.fournisseur_id ? priceForm.fournisseur_id.toString() : ""} onValueChange={(v) => setPriceForm({ ...priceForm, fournisseur_id: parseInt(v) })}>
+                    <SelectTrigger data-testid="select-price-fournisseur">
+                      <SelectValue placeholder="Choisir un fournisseur..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {fournisseurs.map((f: any) => (
+                        <SelectItem key={f.id} value={f.id.toString()}>{f.nom}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
-              <div className="space-y-2">
-                <Label>Régime fiscal *</Label>
-                <Select value={priceForm.regime_fiscal} onValueChange={(v) => setPriceForm({ ...priceForm, regime_fiscal: v })}>
-                  <SelectTrigger data-testid="select-price-regime">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="tva_18">TVA 18%</SelectItem>
-                    <SelectItem value="sans_tva">Sans TVA</SelectItem>
-                    <SelectItem value="brs_5">BRS 5%</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
 
-            {priceForm.prix_ht > 0 && (
-              <div className="rounded-lg bg-muted p-3 space-y-1 text-sm">
-                <div className="flex justify-between"><span>Prix HT:</span><span className="font-medium">{formatFCFA(prixCalc.prixHt)}</span></div>
-                {prixCalc.prixTtc !== null && <div className="flex justify-between"><span>Prix TTC:</span><span className="font-medium">{formatFCFA(prixCalc.prixTtc)}</span></div>}
-                {prixCalc.prixBrs !== null && <div className="flex justify-between"><span>Prix BRS:</span><span className="font-medium">{formatFCFA(prixCalc.prixBrs)}</span></div>}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Prix HT (FCFA) *</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={priceForm.prix_ht || ""}
+                    onChange={(e) => setPriceForm({ ...priceForm, prix_ht: parseFloat(e.target.value) || 0 })}
+                    placeholder="0"
+                    data-testid="input-price-ht"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Régime fiscal *</Label>
+                  <Select value={priceForm.regime_fiscal} onValueChange={(v) => setPriceForm({ ...priceForm, regime_fiscal: v })}>
+                    <SelectTrigger data-testid="select-price-regime">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="tva_18">TVA 18%</SelectItem>
+                      <SelectItem value="sans_tva">Sans TVA</SelectItem>
+                      <SelectItem value="brs_5">BRS 5%</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-            )}
 
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsPriceDialogOpen(false)}>Annuler</Button>
-              <Button type="submit" disabled={!priceForm.fournisseur_id || priceForm.prix_ht <= 0 || addPriceMutation.isPending} data-testid="button-submit-price">
-                Ajouter le prix
-              </Button>
-            </DialogFooter>
-          </form>
+              {priceForm.prix_ht > 0 && (
+                <div className="rounded-lg bg-muted p-3 space-y-1 text-sm">
+                  <div className="flex justify-between"><span>Prix HT:</span><span className="font-medium">{formatFCFA(prixCalc.prixHt)}</span></div>
+                  {prixCalc.prixTtc !== null && <div className="flex justify-between"><span>Prix TTC:</span><span className="font-medium">{formatFCFA(prixCalc.prixTtc)}</span></div>}
+                  {prixCalc.prixBrs !== null && <div className="flex justify-between"><span>Prix BRS:</span><span className="font-medium">{formatFCFA(prixCalc.prixBrs)}</span></div>}
+                </div>
+              )}
+
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setIsPriceDialogOpen(false)}>Annuler</Button>
+                <Button type="submit" disabled={!priceForm.fournisseur_id || priceForm.prix_ht <= 0 || addPriceMutation.isPending || updatePriceMutation.isPending} data-testid="button-submit-price">
+                  {isEditingPrice ? (updatePriceMutation.isPending ? "Enregistrement..." : "Enregistrer les modifications") : (addPriceMutation.isPending ? "Ajout..." : "Ajouter le prix")}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -556,7 +638,20 @@ export default function Produits() {
                 <div><span className="text-muted-foreground">Unité:</span><p className="font-medium">{selectedProduct.unite}</p></div>
                 {selectedProduct.sousSection && <div><span className="text-muted-foreground">Sous-section:</span><p className="font-medium">{selectedProduct.sousSection}</p></div>}
                 <div><span className="text-muted-foreground">Source:</span><p className="font-medium">{selectedProduct.sourceApp}</p></div>
-                <div><span className="text-muted-foreground">Stockable:</span><p className="font-medium">{selectedProduct.estStockable ? "Oui" : "Non"}</p></div>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="stockable-toggle"
+                  checked={selectedProduct.estStockable}
+                  onCheckedChange={(checked) => {
+                    toggleStockableMutation.mutate({ id: selectedProduct.id, estStockable: !!checked });
+                  }}
+                  data-testid="checkbox-stockable"
+                />
+                <Label htmlFor="stockable-toggle" className="cursor-pointer text-sm">
+                  Produit stockable
+                </Label>
               </div>
 
               <div>
@@ -567,6 +662,9 @@ export default function Produits() {
                   </h3>
                   <Button size="sm" onClick={() => {
                     setPriceForm({ fournisseur_id: 0, prix_ht: 0, regime_fiscal: "tva_18", est_fournisseur_defaut: false });
+                    setIsEditingPrice(false);
+                    setEditingPrixId(null);
+                    setDuplicatePriceWarning(false);
                     setIsPriceDialogOpen(true);
                   }} data-testid="button-add-price">
                     <Plus className="h-3 w-3 mr-1" />
@@ -604,6 +702,21 @@ export default function Produits() {
                                 Défaut
                               </Button>
                             )}
+                            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => {
+                              setIsEditingPrice(true);
+                              setEditingPrixId(pf.id);
+                              setPriceForm({
+                                fournisseur_id: pf.fournisseur.id,
+                                prix_ht: Number(pf.prixHt),
+                                regime_fiscal: pf.regimeFiscal,
+                                est_fournisseur_defaut: pf.estFournisseurDefaut,
+                              });
+                              setDuplicatePriceWarning(false);
+                              setIsPriceDialogOpen(true);
+                            }} data-testid={`button-edit-price-${pf.id}`}>
+                              <Pencil className="h-3 w-3 mr-1" />
+                              Modifier
+                            </Button>
                             <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => {
                               setHistoryPrixId(pf.id);
                               setIsHistoryOpen(true);
