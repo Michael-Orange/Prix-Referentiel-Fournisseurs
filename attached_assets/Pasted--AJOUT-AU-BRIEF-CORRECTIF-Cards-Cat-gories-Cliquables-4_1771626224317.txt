@@ -1,0 +1,96 @@
+# AJOUT AU BRIEF CORRECTIF : Cards Catégories Cliquables
+
+## 4. RENDRE LES CARDS CATÉGORIES CLIQUABLES
+
+**Problème actuel :** Les cards catégories dans la page "Catégories" sont statiques.
+
+**Solution à implémenter :**
+
+### A) Rendre les cards cliquables
+
+Chaque card catégorie doit être cliquable et rediriger vers la page "Produits & Prix" avec le filtre catégorie pré-appliqué.
+
+**Comportement souhaité :**
+```
+User clique sur la card "Clotûre"
+    ↓
+Redirection vers /produits?categorie=Clotûre
+    ↓
+Page "Produits & Prix" s'ouvre avec :
+- Filtre catégorie = "Clotûre" (pré-sélectionné)
+- Affichage des 1 produit(s) de cette catégorie
+```
+
+### B) Design visuel
+
+**Ajouter des indices visuels de cliquabilité :**
+
+1. **Effet hover sur la card** :
+   - Légère élévation (box-shadow plus prononcée)
+   - Bordure turquoise #3AA6B9 qui apparaît
+   - Curseur pointer
+
+2. **Ajouter une icône subtile** (optionnel) :
+   - Icône "→" ou "↗" en haut à droite de la card
+   - Apparaît au hover
+
+**Exemple CSS/design :**
+```css
+.category-card {
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.category-card:hover {
+  box-shadow: 0 4px 12px rgba(58, 166, 185, 0.15);
+  border: 1px solid #3AA6B9;
+  transform: translateY(-2px);
+}
+```
+
+### C) Implémentation technique
+
+**Routing :**
+```typescript
+// Dans le composant CategoriesPage.tsx
+const handleCategoryClick = (categoryName: string) => {
+  navigate(`/produits?categorie=${encodeURIComponent(categoryName)}`);
+};
+
+// Ou avec React Router Link
+<Link to={`/produits?categorie=${encodeURIComponent(category.nom)}`}>
+  <Card className="category-card">
+    {/* Contenu card */}
+  </Card>
+</Link>
+```
+
+**Dans la page Produits & Prix :**
+Lire le paramètre URL `categorie` et pré-sélectionner le filtre :
+
+```typescript
+const searchParams = new URLSearchParams(location.search);
+const categoriePreselect = searchParams.get('categorie');
+
+// Initialiser le state du filtre avec cette valeur
+const [categorieFiltre, setCategorieFiltre] = useState(categoriePreselect || 'Toutes catégories');
+```
+
+### D) Accessibilité
+
+- Ajouter `role="button"` sur les cards cliquables
+- Support clavier : la touche Entrée doit fonctionner
+- Aria-label : "Voir les produits de la catégorie Clotûre"
+
+---
+
+## ✅ CHECKLIST DE VALIDATION (ajout)
+
+**Cards catégories cliquables :**
+- [ ] Les 9 cards catégories sont cliquables (curseur pointer visible)
+- [ ] Hover sur une card affiche bordure turquoise + élévation
+- [ ] Cliquer sur "Clotûre" redirige vers `/produits?categorie=Clotûre`
+- [ ] La page Produits & Prix s'ouvre avec le filtre "Clotûre" pré-sélectionné
+- [ ] Les produits affichés correspondent bien à la catégorie
+- [ ] Fonctionne avec toutes les 9 catégories
+- [ ] Support clavier (Tab + Entrée)

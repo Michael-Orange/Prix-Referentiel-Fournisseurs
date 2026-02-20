@@ -1,0 +1,223 @@
+# BRIEF CORRECTIF : Modifications Produits & Filtres
+
+## 🎯 PROBLÈMES À CORRIGER
+
+### 1. PERMETTRE DE MODIFIER LE STATUT "STOCKABLE"
+
+**Problème actuel :** Impossible de changer si un produit est stockable ou non après création.
+
+**Solution à implémenter :**
+
+Dans la page détail produit (panneau latéral ou page `/produits/:id`), ajouter une **checkbox "Stockable"** dans la section informations produit.
+
+**UI souhaitée :**
+```
+┌─────────────────────────────────────┐
+│ Informations produit                │
+├─────────────────────────────────────┤
+│ Nom : Bouteille diluant             │
+│ Catégorie : Clotûre                 │
+│ Unité : unité(s)                    │
+│                                     │
+│ ☑ Produit stockable                 │  ← CHECKBOX interactive
+│                                     │
+│ Source : stock                      │
+└─────────────────────────────────────┘
+```
+
+**Comportement :**
+- Checkbox cochée = `est_stockable = true`
+- Checkbox décochée = `est_stockable = false`
+- Changement immédiat lors du clic (pas besoin de bouton "Enregistrer")
+- Toast de confirmation : "✓ Statut stockable mis à jour"
+
+**Endpoint API à utiliser (déjà créé) :**
+```
+PATCH /api/referentiel/produits/:id/stockable
+Body: { "est_stockable": true/false }
+```
+
+---
+
+### 2. PERMETTRE DE MODIFIER UN PRIX FOURNISSEUR EXISTANT
+
+**Problème actuel :** 
+- Message d'erreur "Ce fournisseur a déjà un prix pour ce produit" quand on essaie d'ajouter un nouveau prix
+- Pas de moyen de modifier un prix existant
+
+**Solution à implémenter :**
+
+#### A) Ajouter un bouton "Modifier le prix" sur chaque card fournisseur
+
+Dans la card fournisseur (ex: ABC Matériaux), ajouter un bouton **"Modifier"** à côté de "Historique".
+
+**UI actuelle :**
+```
+┌─────────────────────────────────────┐
+│ ABC Matériaux ⭐                     │
+│ TVA 18%                             │
+│ 10 000 FCFA HT                      │
+│ 11 800 FCFA TTC                     │
+│                                     │
+│ [Historique]                        │  ← Ajouter [Modifier] ici
+└─────────────────────────────────────┘
+```
+
+**UI souhaitée :**
+```
+┌─────────────────────────────────────┐
+│ ABC Matériaux ⭐                     │
+│ TVA 18%                             │
+│ 10 000 FCFA HT                      │
+│ 11 800 FCFA TTC                     │
+│                                     │
+│ [Modifier] [Historique]             │  ← Bouton Modifier ajouté
+└─────────────────────────────────────┘
+```
+
+#### B) Modal de modification prix
+
+Le bouton "Modifier" ouvre un modal similaire à "Ajouter un prix" mais :
+- Titre : "Modifier le prix - [Nom fournisseur]"
+- Champs pré-remplis avec les valeurs actuelles
+- Le fournisseur n'est PAS modifiable (readonly/disabled)
+- On peut changer : Prix HT, Régime fiscal
+
+**Formulaire :**
+```
+┌─────────────────────────────────────────┐
+│ Modifier le prix - ABC Matériaux        │
+├─────────────────────────────────────────┤
+│ Fournisseur: ABC Matériaux (non modif.) │
+│                                         │
+│ Prix HT (FCFA) *                        │
+│ [12000________]                         │
+│                                         │
+│ Régime fiscal *                         │
+│ ⚪ TVA 18%                               │
+│ ⚪ Sans TVA                              │
+│ ⚪ BRS 5%                                │
+│                                         │
+│ Prix calculé:                           │
+│ Prix HT: 12000 FCFA                     │
+│ Prix TTC: 14160 FCFA                    │
+│                                         │
+│ [Annuler]  [Enregistrer les modifications]│
+└─────────────────────────────────────────┘
+```
+
+**Endpoint API à utiliser (déjà créé) :**
+```
+PATCH /api/prix/fournisseurs/:id
+Body: { 
+  "prix_ht": 12000, 
+  "regime_fiscal": "tva_18" 
+}
+```
+
+**Effet attendu :**
+- Le prix est mis à jour
+- L'historique enregistre automatiquement l'ancien et le nouveau prix (via trigger PostgreSQL)
+- Toast de confirmation : "✓ Prix mis à jour"
+
+#### C) Améliorer la validation lors de l'ajout
+
+Actuellement, erreur "Ce fournisseur a déjà un prix" est bloquante.
+
+**Comportement souhaité :**
+- Si on essaie d'ajouter un fournisseur qui existe déjà → afficher un message plus clair :
+  ```
+  ⚠️ Ce fournisseur a déjà un prix pour ce produit.
+  Voulez-vous mettre à jour le prix existant ?
+  
+  [Annuler] [Oui, mettre à jour]
+  ```
+- Si l'utilisateur clique "Oui, mettre à jour" → transformer le modal "Ajouter" en "Modifier"
+
+---
+
+### 3. AJOUTER FILTRE "STOCKABLE" DANS LA BARRE DE RECHERCHE
+
+**Problème actuel :** Pas de filtre pour voir uniquement les produits stockables ou non-stockables.
+
+**Solution à implémenter :**
+
+Dans la page "Produits & Prix", enrichir la barre de filtres existante.
+
+**UI actuelle :**
+```
+[Rechercher un produit...] [Toutes catégories ▼] [Tous ▼]
+```
+
+**UI souhaitée :**
+```
+[Rechercher un produit...] [Toutes catégories ▼] [Tous ▼] [Statut stockage ▼]
+                                                              └─ Tous
+                                                              └─ Stockable
+                                                              └─ Non stockable
+```
+
+**Comportement :**
+- Par défaut : "Tous" (affiche tout)
+- Si "Stockable" : filtre `est_stockable = true`
+- Si "Non stockable" : filtre `est_stockable = false`
+
+**Endpoint API :**
+L'endpoint `GET /api/referentiel/produits` existe déjà avec le paramètre `stockable=true/false`.
+
+Utiliser :
+- `GET /api/referentiel/produits` → Tous
+- `GET /api/referentiel/produits?stockable=true` → Stockables uniquement
+- `GET /api/referentiel/produits?stockable=false` → Non-stockables uniquement
+
+---
+
+## 🎨 DESIGN
+
+- **Checkbox "Stockable"** : Utiliser le composant shadcn/ui Checkbox avec la couleur turquoise #3AA6B9 quand cochée
+- **Bouton "Modifier"** : Style secondaire (outline) pour le différencier de "Historique"
+- **Toast notifications** : shadcn/ui Toast avec icône de succès ✓
+
+---
+
+## ✅ CHECKLIST DE VALIDATION
+
+Après ces modifications, vérifier :
+
+**Statut stockable :**
+- [ ] La checkbox "Stockable" est visible dans le détail produit
+- [ ] Cliquer sur la checkbox change immédiatement le statut
+- [ ] Toast de confirmation s'affiche
+- [ ] Le badge "Stockable" dans la liste produits se met à jour
+
+**Modification prix :**
+- [ ] Le bouton "Modifier" apparaît sur chaque card fournisseur
+- [ ] Cliquer ouvre le modal avec valeurs pré-remplies
+- [ ] Modifier le prix HT recalcule automatiquement TTC/BRS
+- [ ] Enregistrer met à jour le prix et crée une entrée historique
+- [ ] L'historique affiche bien l'ancien et le nouveau prix
+
+**Filtre stockage :**
+- [ ] Le filtre "Statut stockage" est visible dans la barre
+- [ ] Sélectionner "Stockable" affiche uniquement les produits stockables
+- [ ] Sélectionner "Non stockable" affiche uniquement les non-stockables
+- [ ] Le filtre fonctionne en combinaison avec les autres filtres (catégorie, recherche)
+
+---
+
+## 📝 NOTES TECHNIQUES
+
+### Gestion de l'unicité fournisseur
+La contrainte UNIQUE `(produit_master_id, fournisseur_id)` empêche les doublons.
+
+Pour la modification :
+- Utiliser `PATCH /api/prix/fournisseurs/:id` (met à jour l'entrée existante)
+- Ne PAS essayer de recréer avec INSERT (=> erreur UNIQUE)
+
+### Historique automatique
+Le trigger PostgreSQL `trigger_historique_prix` enregistre automatiquement lors d'un UPDATE.
+Pas besoin de code supplémentaire pour l'historique.
+
+### Performance filtre
+Le filtre stockable utilise un index existant sur `est_stockable`.
+Pas d'impact performance.
