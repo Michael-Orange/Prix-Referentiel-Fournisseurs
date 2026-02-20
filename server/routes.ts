@@ -330,9 +330,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       });
       res.status(201).json(prix);
     } catch (error: any) {
-      if (error?.constraint === "uq_produit_fournisseur") {
-        return res.status(409).json({ error: "Ce fournisseur a déjà un prix pour ce produit" });
-      }
       console.error("Error:", error);
       res.status(500).json({ error: "Erreur serveur" });
     }

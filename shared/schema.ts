@@ -94,7 +94,6 @@ export const prixFournisseurs = prixSchema.table("prix_fournisseurs", {
   index("idx_prix_produit_master").on(table.produitMasterId),
   index("idx_prix_fournisseur").on(table.fournisseurId),
   index("idx_prix_defaut").on(table.estFournisseurDefaut),
-  unique("uq_produit_fournisseur").on(table.produitMasterId, table.fournisseurId),
 ]);
 
 export const insertPrixFournisseurSchema = createInsertSchema(prixFournisseurs).omit({
@@ -154,6 +153,7 @@ export type ProduitWithPrixDefaut = ProduitMaster & {
     prixBrs: number | null;
     regimeFiscal: string;
   } | null;
+  prixDateModification?: Date | string | null;
 };
 
 export type ProduitDetail = ProduitMaster & {

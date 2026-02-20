@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useSearch } from "wouter";
 import { PageHeader } from "@/components/page-header";
@@ -45,8 +45,10 @@ import {
   StarOff,
   AlertTriangle,
   ArrowRight,
-  Pencil,
   User,
+  ChevronUp,
+  ChevronDown,
+  ChevronsUpDown,
 } from "lucide-react";
 import type {
   ProduitWithPrixDefaut,
@@ -79,13 +81,15 @@ export default function Produits() {
 
   const [isProductDialogOpen, setIsProductDialogOpen] = useState(false);
   const [isPriceDialogOpen, setIsPriceDialogOpen] = useState(false);
-  const [isEditingPrice, setIsEditingPrice] = useState(false);
-  const [editingPrixId, setEditingPrixId] = useState<number | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [selectedProductId, setSelectedProductId] = useState<number | null>(null);
   const [historyPrixId, setHistoryPrixId] = useState<number | null>(null);
   const [duplicates, setDuplicates] = useState<DuplicateResult[]>([]);
-  const [duplicatePriceWarning, setDuplicatePriceWarning] = useState(false);
+
+  const [sortConfig, setSortConfig] = useState<{
+    key: string;
+    direction: 'asc' | 'desc' | null;
+  }>({ key: '', direction: null });
 
   const [productForm, setProductForm] = useState({
     nom: "",
@@ -174,32 +178,11 @@ export default function Produits() {
       if (selectedProductId) {
         queryClient.invalidateQueries({ queryKey: ["/api/referentiel/produits", selectedProductId] });
       }
-      toast({ title: "Prix ajouté" });
-      setIsPriceDialogOpen(false);
-    },
-    onError: (error: Error) => {
-      if (error.message.includes("409")) {
-        setDuplicatePriceWarning(true);
-      } else {
-        toast({ title: "Erreur", description: "Impossible d'ajouter le prix", variant: "destructive" });
-      }
-    },
-  });
-
-  const updatePriceMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: { prix_ht: number; regime_fiscal: string } }) => {
-      return apiRequest("PATCH", `/api/prix/fournisseurs/${id}`, data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/referentiel/produits"] });
-      if (selectedProductId) {
-        queryClient.invalidateQueries({ queryKey: ["/api/referentiel/produits", selectedProductId] });
-      }
-      toast({ title: "Prix modifié" });
+      toast({ title: "Prix ajouté", description: "Le nouveau prix a été enregistré" });
       setIsPriceDialogOpen(false);
     },
     onError: () => {
-      toast({ title: "Erreur", description: "Impossible de modifier le prix", variant: "destructive" });
+      toast({ title: "Erreur", description: "Impossible d'ajouter le prix", variant: "destructive" });
     },
   });
 
@@ -242,12 +225,73 @@ export default function Produits() {
     return matchSearch && matchCategorie && matchPrix && matchStockable;
   });
 
+  const handleSort = (key: string) => {
+    let direction: 'asc' | 'desc' | null = 'asc';
+    if (sortConfig.key === key) {
+      if (sortConfig.direction === 'asc') direction = 'desc';
+      else if (sortConfig.direction === 'desc') direction = null;
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const sortedProduits = useMemo(() => {
+    if (!sortConfig.direction || !sortConfig.key) return filteredProduits;
+
+    return [...filteredProduits].sort((a, b) => {
+      let aVal: any;
+      let bVal: any;
+
+      switch (sortConfig.key) {
+        case 'nom':
+          aVal = a.nom.toLowerCase();
+          bVal = b.nom.toLowerCase();
+          break;
+        case 'categorie':
+          aVal = a.categorie.toLowerCase();
+          bVal = b.categorie.toLowerCase();
+          break;
+        case 'prixHT':
+          aVal = a.fournisseurDefaut?.prixHt ?? 0;
+          bVal = b.fournisseurDefaut?.prixHt ?? 0;
+          break;
+        case 'prixFinal':
+          aVal = a.fournisseurDefaut ? (a.fournisseurDefaut.prixTtc ?? a.fournisseurDefaut.prixBrs ?? a.fournisseurDefaut.prixHt) : 0;
+          bVal = b.fournisseurDefaut ? (b.fournisseurDefaut.prixTtc ?? b.fournisseurDefaut.prixBrs ?? b.fournisseurDefaut.prixHt) : 0;
+          break;
+        case 'derniereMAJ':
+          aVal = a.prixDateModification ? new Date(a.prixDateModification).getTime() : 0;
+          bVal = b.prixDateModification ? new Date(b.prixDateModification).getTime() : 0;
+          break;
+        case 'creePar':
+          aVal = (a.creePar || '').toLowerCase();
+          bVal = (b.creePar || '').toLowerCase();
+          break;
+        default:
+          return 0;
+      }
+
+      if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [filteredProduits, sortConfig]);
+
   const prixCalc = calculerPrix(priceForm.prix_ht || 0, priceForm.regime_fiscal);
+
+  const SortIcon = ({ columnKey }: { columnKey: string }) => {
+    if (sortConfig.key === columnKey && sortConfig.direction === 'asc') {
+      return <ChevronUp className="h-4 w-4 text-primary" />;
+    }
+    if (sortConfig.key === columnKey && sortConfig.direction === 'desc') {
+      return <ChevronDown className="h-4 w-4 text-primary" />;
+    }
+    return <ChevronsUpDown className="h-4 w-4 text-muted-foreground" />;
+  };
 
   const columns = [
     {
       key: "nom",
-      header: "Produit",
+      header: (<div className="flex items-center gap-1 cursor-pointer select-none" onClick={() => handleSort('nom')} data-testid="sort-nom"><span>Produit</span><SortIcon columnKey="nom" /></div>),
       render: (p: ProduitWithPrixDefaut) => (
         <div>
           <span className="font-medium" data-testid={`text-produit-${p.id}`}>{p.nom}</span>
@@ -257,7 +301,7 @@ export default function Produits() {
     },
     {
       key: "categorie",
-      header: "Catégorie",
+      header: (<div className="flex items-center gap-1 cursor-pointer select-none" onClick={() => handleSort('categorie')} data-testid="sort-categorie"><span>Catégorie</span><SortIcon columnKey="categorie" /></div>),
       render: (p: ProduitWithPrixDefaut) => (
         <span className="text-sm text-muted-foreground">{p.categorie}</span>
       ),
@@ -281,7 +325,7 @@ export default function Produits() {
     },
     {
       key: "prixHT",
-      header: "Prix HT",
+      header: (<div className="flex items-center gap-1 cursor-pointer select-none justify-end" onClick={() => handleSort('prixHT')} data-testid="sort-prixHT"><span>Prix HT</span><SortIcon columnKey="prixHT" /></div>),
       className: "text-right",
       render: (p: ProduitWithPrixDefaut) => (
         <span className="font-medium">
@@ -291,7 +335,7 @@ export default function Produits() {
     },
     {
       key: "prixFinal",
-      header: "Prix final",
+      header: (<div className="flex items-center gap-1 cursor-pointer select-none justify-end" onClick={() => handleSort('prixFinal')} data-testid="sort-prixFinal"><span>Prix final</span><SortIcon columnKey="prixFinal" /></div>),
       className: "text-right",
       render: (p: ProduitWithPrixDefaut) => {
         if (!p.fournisseurDefaut) return <span className="text-muted-foreground">-</span>;
@@ -306,8 +350,18 @@ export default function Produits() {
       },
     },
     {
+      key: "derniereMAJ",
+      header: (<div className="flex items-center gap-1 cursor-pointer select-none" onClick={() => handleSort('derniereMAJ')} data-testid="sort-derniereMAJ"><span>Dernière MAJ</span><SortIcon columnKey="derniereMAJ" /></div>),
+      className: "min-w-[150px]",
+      render: (p: ProduitWithPrixDefaut) => (
+        <span className="text-sm text-muted-foreground" data-testid={`text-derniere-maj-${p.id}`}>
+          {p.prixDateModification ? formatDateTime(p.prixDateModification) : '-'}
+        </span>
+      ),
+    },
+    {
       key: "creePar",
-      header: "Créé par",
+      header: (<div className="flex items-center gap-1 cursor-pointer select-none" onClick={() => handleSort('creePar')} data-testid="sort-creePar"><span>Créé par</span><SortIcon columnKey="creePar" /></div>),
       render: (p: ProduitWithPrixDefaut) => (
         <span className="text-sm text-muted-foreground" data-testid={`text-creepar-${p.id}`}>
           {p.creePar || '-'}
@@ -372,7 +426,7 @@ export default function Produits() {
 
       <DataTable
         columns={columns}
-        data={filteredProduits}
+        data={sortedProduits}
         isLoading={isLoading}
         emptyIcon={Package}
         emptyTitle="Aucun produit"
@@ -483,72 +537,47 @@ export default function Produits() {
         </DialogContent>
       </Dialog>
 
-      {/* Add/Edit Price Dialog */}
-      <Dialog open={isPriceDialogOpen} onOpenChange={(open) => {
-        setIsPriceDialogOpen(open);
-        if (!open) { setIsEditingPrice(false); setEditingPrixId(null); setDuplicatePriceWarning(false); }
-      }}>
+      {/* Add Price Dialog */}
+      <Dialog open={isPriceDialogOpen} onOpenChange={setIsPriceDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{isEditingPrice ? `Modifier le prix - ${fournisseurs.find((f: any) => f.id === priceForm.fournisseur_id)?.nom || ""}` : "Ajouter un prix fournisseur"}</DialogTitle>
+            <DialogTitle>Ajouter un prix fournisseur</DialogTitle>
             <DialogDescription>
               {selectedProduct ? `Pour: ${selectedProduct.nom}` : ""}
             </DialogDescription>
           </DialogHeader>
 
-          {duplicatePriceWarning && !isEditingPrice ? (
-            <div className="space-y-4">
-              <div className="rounded-lg border border-orange-300 bg-orange-50 p-4">
-                <div className="flex items-center gap-2 text-orange-800 font-medium text-sm mb-2">
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            if (selectedProductId && priceForm.fournisseur_id && priceForm.prix_ht > 0) {
+              addPriceMutation.mutate({ produitId: selectedProductId, data: priceForm });
+            }
+          }} className="space-y-4">
+            {selectedProduct?.prixFournisseurs?.some(pf => pf.fournisseur.id === priceForm.fournisseur_id) && priceForm.fournisseur_id > 0 && (
+              <div className="rounded-lg border border-orange-300 bg-orange-50 p-3">
+                <div className="flex items-center gap-2 text-orange-800 font-medium text-sm mb-1">
                   <AlertTriangle className="h-4 w-4" />
-                  Ce fournisseur a déjà un prix pour ce produit
+                  Ce fournisseur a déjà un prix
                 </div>
                 <p className="text-sm text-orange-700">
-                  Voulez-vous mettre à jour le prix existant ?
+                  Un nouveau prix sera créé et l'ancien restera dans l'historique.
                 </p>
               </div>
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => { setIsPriceDialogOpen(false); setDuplicatePriceWarning(false); }} data-testid="button-cancel-duplicate">Annuler</Button>
-                <Button type="button" onClick={() => {
-                  setDuplicatePriceWarning(false);
-                  const existingPrix = selectedProduct?.prixFournisseurs?.find(
-                    (pf) => pf.fournisseur.id === priceForm.fournisseur_id
-                  );
-                  if (existingPrix) {
-                    setIsEditingPrice(true);
-                    setEditingPrixId(existingPrix.id);
-                  }
-                }} data-testid="button-confirm-update">
-                  Oui, mettre à jour
-                </Button>
-              </DialogFooter>
+            )}
+
+            <div className="space-y-2">
+              <Label>Fournisseur *</Label>
+              <Select value={priceForm.fournisseur_id ? priceForm.fournisseur_id.toString() : ""} onValueChange={(v) => setPriceForm({ ...priceForm, fournisseur_id: parseInt(v) })}>
+                <SelectTrigger data-testid="select-price-fournisseur">
+                  <SelectValue placeholder="Choisir un fournisseur..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {fournisseurs.map((f: any) => (
+                    <SelectItem key={f.id} value={f.id.toString()}>{f.nom}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-          ) : (
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              if (isEditingPrice && editingPrixId) {
-                updatePriceMutation.mutate({ id: editingPrixId, data: { prix_ht: priceForm.prix_ht, regime_fiscal: priceForm.regime_fiscal } });
-              } else if (selectedProductId && priceForm.fournisseur_id && priceForm.prix_ht > 0) {
-                addPriceMutation.mutate({ produitId: selectedProductId, data: priceForm });
-              }
-            }} className="space-y-4">
-              <div className="space-y-2">
-                <Label>Fournisseur *</Label>
-                {isEditingPrice ? (
-                  <Input value={fournisseurs.find((f: any) => f.id === priceForm.fournisseur_id)?.nom || ""} disabled data-testid="input-price-fournisseur-readonly" />
-                ) : (
-                  <Select value={priceForm.fournisseur_id ? priceForm.fournisseur_id.toString() : ""} onValueChange={(v) => setPriceForm({ ...priceForm, fournisseur_id: parseInt(v) })}>
-                    <SelectTrigger data-testid="select-price-fournisseur">
-                      <SelectValue placeholder="Choisir un fournisseur..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {fournisseurs.map((f: any) => (
-                        <SelectItem key={f.id} value={f.id.toString()}>{f.nom}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -585,14 +614,13 @@ export default function Produits() {
                 </div>
               )}
 
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setIsPriceDialogOpen(false)}>Annuler</Button>
-                <Button type="submit" disabled={!priceForm.fournisseur_id || priceForm.prix_ht <= 0 || addPriceMutation.isPending || updatePriceMutation.isPending} data-testid="button-submit-price">
-                  {isEditingPrice ? (updatePriceMutation.isPending ? "Enregistrement..." : "Enregistrer les modifications") : (addPriceMutation.isPending ? "Ajout..." : "Ajouter le prix")}
-                </Button>
-              </DialogFooter>
-            </form>
-          )}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsPriceDialogOpen(false)}>Annuler</Button>
+              <Button type="submit" disabled={!priceForm.fournisseur_id || priceForm.prix_ht <= 0 || addPriceMutation.isPending} data-testid="button-submit-price">
+                {addPriceMutation.isPending ? "Ajout..." : "Ajouter le prix"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
@@ -695,9 +723,6 @@ export default function Produits() {
                   </h3>
                   <Button size="sm" onClick={() => {
                     setPriceForm({ fournisseur_id: 0, prix_ht: 0, regime_fiscal: "tva_18", est_fournisseur_defaut: false });
-                    setIsEditingPrice(false);
-                    setEditingPrixId(null);
-                    setDuplicatePriceWarning(false);
                     setIsPriceDialogOpen(true);
                   }} data-testid="button-add-price">
                     <Plus className="h-3 w-3 mr-1" />
@@ -740,21 +765,6 @@ export default function Produits() {
                                 Défaut
                               </Button>
                             )}
-                            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => {
-                              setIsEditingPrice(true);
-                              setEditingPrixId(pf.id);
-                              setPriceForm({
-                                fournisseur_id: pf.fournisseur.id,
-                                prix_ht: Number(pf.prixHt),
-                                regime_fiscal: pf.regimeFiscal,
-                                est_fournisseur_defaut: pf.estFournisseurDefaut,
-                              });
-                              setDuplicatePriceWarning(false);
-                              setIsPriceDialogOpen(true);
-                            }} data-testid={`button-edit-price-${pf.id}`}>
-                              <Pencil className="h-3 w-3 mr-1" />
-                              Modifier
-                            </Button>
                             <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => {
                               setHistoryPrixId(pf.id);
                               setIsHistoryOpen(true);

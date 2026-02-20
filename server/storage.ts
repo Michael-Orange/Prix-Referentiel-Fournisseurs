@@ -140,6 +140,8 @@ export class DatabaseStorage implements IStorage {
           regimeFiscal: prixFournisseurs.regimeFiscal,
           fournisseurNom: fournisseurs.nom,
           fournisseurId: fournisseurs.id,
+          dateModification: prixFournisseurs.dateModification,
+          dateCreation: prixFournisseurs.dateCreation,
         })
         .from(prixFournisseurs)
         .innerJoin(fournisseurs, eq(prixFournisseurs.fournisseurId, fournisseurs.id))
@@ -164,6 +166,7 @@ export class DatabaseStorage implements IStorage {
           prixBrs: fDef.prixBrs,
           regimeFiscal: fDef.regimeFiscal,
         } : null,
+        prixDateModification: fDef ? (fDef.dateModification || fDef.dateCreation) : null,
       });
     }
 
@@ -270,7 +273,39 @@ export class DatabaseStorage implements IStorage {
     estFournisseurDefaut?: boolean;
     creePar?: string;
   }): Promise<PrixFournisseur> {
-    const existingCount = await db
+    const existingForFournisseur = await db
+      .select()
+      .from(prixFournisseurs)
+      .where(and(
+        eq(prixFournisseurs.produitMasterId, data.produitMasterId),
+        eq(prixFournisseurs.fournisseurId, data.fournisseurId),
+        eq(prixFournisseurs.actif, true)
+      ));
+
+    const oldPrix = existingForFournisseur[0];
+    const wasDefault = oldPrix?.estFournisseurDefaut ?? false;
+
+    if (oldPrix) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        if (data.creePar) {
+          await client.query('SELECT set_config($1, $2, true)', ['app.modifier_name', data.creePar]);
+        }
+        await client.query(
+          `UPDATE prix.prix_fournisseurs SET actif = false, date_modification = NOW() WHERE id = $1`,
+          [oldPrix.id]
+        );
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    }
+
+    const existingActiveCount = await db
       .select({ c: count() })
       .from(prixFournisseurs)
       .where(and(
@@ -278,14 +313,17 @@ export class DatabaseStorage implements IStorage {
         eq(prixFournisseurs.actif, true)
       ));
 
-    const isFirst = existingCount[0].c === 0;
-    const estDefaut = isFirst ? true : (data.estFournisseurDefaut || false);
+    const isFirst = existingActiveCount[0].c === 0;
+    const estDefaut = isFirst ? true : (wasDefault || data.estFournisseurDefaut || false);
 
     if (estDefaut && !isFirst) {
       await db
         .update(prixFournisseurs)
         .set({ estFournisseurDefaut: false, dateModification: new Date() })
-        .where(eq(prixFournisseurs.produitMasterId, data.produitMasterId));
+        .where(and(
+          eq(prixFournisseurs.produitMasterId, data.produitMasterId),
+          eq(prixFournisseurs.actif, true)
+        ));
     }
 
     const { prixTtc, prixBrs } = calculerPrix(data.prixHt, data.regimeFiscal);
@@ -370,11 +408,40 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getHistoriquePrix(prixFournisseurId: number): Promise<HistoriquePrix[]> {
-    return db
-      .select()
-      .from(historiquePrix)
-      .where(eq(historiquePrix.prixFournisseurId, prixFournisseurId))
-      .orderBy(desc(historiquePrix.dateModification));
+    const [current] = await db.select().from(prixFournisseurs).where(eq(prixFournisseurs.id, prixFournisseurId));
+    if (!current) return [];
+
+    const allPrixIds = await db
+      .select({ id: prixFournisseurs.id })
+      .from(prixFournisseurs)
+      .where(and(
+        eq(prixFournisseurs.produitMasterId, current.produitMasterId),
+        eq(prixFournisseurs.fournisseurId, current.fournisseurId)
+      ));
+
+    const ids = allPrixIds.map(r => r.id);
+    if (ids.length === 0) return [];
+
+    const client = await pool.connect();
+    try {
+      const result = await client.query(
+        `SELECT * FROM prix.historique_prix WHERE prix_fournisseur_id = ANY($1) ORDER BY date_modification DESC`,
+        [ids]
+      );
+      return result.rows.map((row: any) => ({
+        id: row.id,
+        prixFournisseurId: row.prix_fournisseur_id,
+        prixHtAncien: row.prix_ht_ancien,
+        prixHtNouveau: row.prix_ht_nouveau,
+        regimeFiscalAncien: row.regime_fiscal_ancien,
+        regimeFiscalNouveau: row.regime_fiscal_nouveau,
+        modifiePar: row.modifie_par,
+        dateModification: row.date_modification,
+        raison: row.raison,
+      }));
+    } finally {
+      client.release();
+    }
   }
 
   async getApiKey(key: string): Promise<ApiKey | undefined> {

@@ -128,3 +128,9 @@ BRS 5%:   prixTtc = null, prixBrs = prixHt / 0.95
 - Audit trail: creePar populated from session user on product/price creation
 - Audit trail: PostgreSQL trigger records modifiePar via set_config('app.modifier_name') session variable
 - Audit trail: UI shows "Créé par" column in product list, audit section in detail sheet, "Par X" in price history
+- Removed "Modifier" button from price cards; prices are never edited, only replaced
+- Price replacement: adding a price for an existing supplier auto-deactivates old price (actif=false), creates new one, preserves history
+- Removed unique constraint uq_produit_fournisseur to allow multiple price entries per product+supplier
+- History aggregation: getHistoriquePrix now fetches history across all price entries for same product+supplier
+- Added "Dernière MAJ" column in products table showing prixDateModification (from default supplier price)
+- Sortable columns: Produit, Catégorie, Prix HT, Prix final, Dernière MAJ, Créé par with 3-state cycle (asc/desc/neutral)
