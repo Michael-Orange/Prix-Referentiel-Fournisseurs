@@ -1,0 +1,375 @@
+# AJOUT : TRI TOUTES COLONNES + FILTRE SOUS-SECTION
+
+## OBJECTIF
+1. Rendre TOUTES les colonnes triables (pas seulement certaines)
+2. Ajouter filtre Sous-section dans la barre de filtres (actif uniquement si catégorie sélectionnée)
+
+# PARTIE 1 : TRI SUR TOUTES LES COLONNES
+
+File: client/src/pages/produits.tsx
+
+## 1. Ajouter clés de tri manquantes dans sortConfig
+
+Actuellement, certaines colonnes ne sont pas triables. Ajouter support pour :
+- `stockage` (estStockable)
+- `sousSection`
+- `unite`
+- `fournisseur` (nom fournisseur défaut)
+- `regimeFiscal`
+
+Vérifier que `sortConfig` accepte toutes ces clés :
+
+```typescript
+const [sortConfig, setSortConfig] = useState<{
+  key: 'nom' | 'categorie' | 'stockage' | 'sousSection' | 'unite' | 'fournisseur' | 'prixHT' | 'regimeFiscal' | 'derniereMAJ' | 'creePar';
+  direction: 'asc' | 'desc';
+}>({
+  key: 'nom',
+  direction: 'asc',
+});
+2. Mettre à jour la fonction de tri dans useMemo
+Dans le useMemo qui calcule sortedProduits, ajouter les cases manquants :
+const sortedProduits = useMemo(() => {
+  let sorted = [...filteredProduits];
+  
+  sorted.sort((a, b) => {
+    let aVal: any;
+    let bVal: any;
+    
+    switch (sortConfig.key) {
+      case 'nom':
+        aVal = a.nom.toLowerCase();
+        bVal = b.nom.toLowerCase();
+        break;
+      case 'categorie':
+        aVal = a.categorie.toLowerCase();
+        bVal = b.categorie.toLowerCase();
+        break;
+      case 'stockage':  // ← AJOUTER
+        aVal = a.estStockable ? 1 : 0;
+        bVal = b.estStockable ? 1 : 0;
+        break;
+      case 'sousSection':  // ← AJOUTER
+        aVal = (a.sousSection || 'Tous').toLowerCase();
+        bVal = (b.sousSection || 'Tous').toLowerCase();
+        break;
+      case 'unite':  // ← AJOUTER
+        aVal = a.unite.toLowerCase();
+        bVal = b.unite.toLowerCase();
+        break;
+      case 'fournisseur':  // ← AJOUTER
+        aVal = a.fournisseurDefaut?.nom.toLowerCase() || '';
+        bVal = b.fournisseurDefaut?.nom.toLowerCase() || '';
+        break;
+      case 'prixHT':
+        aVal = a.fournisseurDefaut?.prixHt || 0;
+        bVal = b.fournisseurDefaut?.prixHt || 0;
+        break;
+      case 'regimeFiscal':
+        aVal = a.fournisseurDefaut?.regimeFiscal || '';
+        bVal = b.fournisseurDefaut?.regimeFiscal || '';
+        break;
+      case 'derniereMAJ':
+        aVal = a.prixDateModification ? new Date(a.prixDateModification).getTime() : 0;
+        bVal = b.prixDateModification ? new Date(b.prixDateModification).getTime() : 0;
+        break;
+      case 'creePar':
+        aVal = a.creePar?.toLowerCase() || '';
+        bVal = b.creePar?.toLowerCase() || '';
+        break;
+      default:
+        return 0;
+    }
+    
+    if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+    if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+    return 0;
+  });
+  
+  return sorted;
+}, [filteredProduits, sortConfig]);
+3. Ajouter en-tête triable sur colonnes manquantes
+Colonne Stockage
+REMPLACER :
+{
+  key: "stockage",
+  header: "Stockage",
+  render: ...
+}
+PAR :
+{
+  key: "stockage",
+  header: (
+    <div className="flex items-center gap-1 cursor-pointer select-none" onClick={() => handleSort('stockage')}>
+      <span>Stockage</span>
+      <SortIcon columnKey="stockage" />
+    </div>
+  ),
+  render: ...
+}
+Colonne Sous-section
+REMPLACER :
+{
+  key: "sousSection",
+  header: "Sous-section",
+  render: ...
+}
+PAR :
+{
+  key: "sousSection",
+  header: (
+    <div className="flex items-center gap-1 cursor-pointer select-none" onClick={() => handleSort('sousSection')}>
+      <span>Sous-section</span>
+      <SortIcon columnKey="sousSection" />
+    </div>
+  ),
+  render: ...
+}
+Colonne Unité
+REMPLACER :
+{
+  key: "unite",
+  header: "Unité",
+  render: ...
+}
+PAR :
+{
+  key: "unite",
+  header: (
+    <div className="flex items-center gap-1 cursor-pointer select-none" onClick={() => handleSort('unite')}>
+      <span>Unité</span>
+      <SortIcon columnKey="unite" />
+    </div>
+  ),
+  render: ...
+}
+Colonne Fournisseur défaut
+REMPLACER :
+{
+  key: "fournisseur",
+  header: "Fournisseur défaut",
+  render: ...
+}
+PAR :
+{
+  key: "fournisseur",
+  header: (
+    <div className="flex items-center gap-1 cursor-pointer select-none" onClick={() => handleSort('fournisseur')}>
+      <span>Fournisseur défaut</span>
+      <SortIcon columnKey="fournisseur" />
+    </div>
+  ),
+  render: ...
+}
+PARTIE 2 : FILTRE SOUS-SECTION DANS LA BARRE
+File: client/src/pages/produits.tsx
+1. Ajouter état filtre sous-section
+Après les états de filtres existants, ajouter :
+const [selectedSousSection, setSelectedSousSection] = useState<string>("Tous");
+2. Récupérer les sous-sections de la catégorie sélectionnée
+Créer un computed pour les sous-sections disponibles :
+const availableSousSections = useMemo(() => {
+  if (!selectedCategorie || selectedCategorie === "Toutes catégories") {
+    return [];
+  }
+  
+  // Filtrer les sous-sections de la catégorie sélectionnée
+  const ssSections = sousSections.filter((ss: any) => ss.categorie === selectedCategorie);
+  return ssSections;
+}, [selectedCategorie, sousSections]);
+3. Réinitialiser filtre sous-section quand catégorie change
+Ajouter un useEffect :
+useEffect(() => {
+  // Quand la catégorie change, reset le filtre sous-section
+  if (!selectedCategorie || selectedCategorie === "Toutes catégories") {
+    setSelectedSousSection("Tous");
+  }
+}, [selectedCategorie]);
+4. Appliquer filtre sous-section dans filteredProduits
+Dans le useMemo qui calcule filteredProduits, ajouter condition :
+const filteredProduits = useMemo(() => {
+  let filtered = produits;
+  
+  // Filtre par recherche
+  if (searchQuery) {
+    filtered = filtered.filter(p => 
+      p.nom.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }
+  
+  // Filtre par catégorie
+  if (selectedCategorie && selectedCategorie !== "Toutes catégories") {
+    filtered = filtered.filter(p => p.categorie === selectedCategorie);
+  }
+  
+  // ← AJOUTER CE FILTRE
+  // Filtre par sous-section
+  if (selectedSousSection && selectedSousSection !== "Tous") {
+    filtered = filtered.filter(p => p.sousSection === selectedSousSection);
+  }
+  
+  // Filtre par prix (avec/sans)
+  if (selectedPrixFilter === "avec") {
+    filtered = filtered.filter(p => p.fournisseurDefaut);
+  } else if (selectedPrixFilter === "sans") {
+    filtered = filtered.filter(p => !p.fournisseurDefaut);
+  }
+  
+  // Filtre stockable
+  if (selectedStockable !== "tous") {
+    const isStockable = selectedStockable === "stockable";
+    filtered = filtered.filter(p => p.estStockable === isStockable);
+  }
+  
+  // Filtre actifs/inactifs
+  if (!showInactifs) {
+    filtered = filtered.filter(p => p.actif);
+  }
+  
+  return filtered;
+}, [produits, searchQuery, selectedCategorie, selectedSousSection, selectedPrixFilter, selectedStockable, showInactifs]);
+5. Ajouter le Select Sous-section dans la barre de filtres
+Localiser la barre de filtres (ligne avec les Selects), et INSÉRER le filtre Sous-section APRÈS le filtre Catégorie :
+<div className="flex gap-2 items-center">
+  {/* Filtre Catégorie */}
+  <Select value={selectedCategorie} onValueChange={setSelectedCategorie}>
+    <SelectTrigger className="w-[200px]">
+      <SelectValue placeholder="Toutes catégories" />
+    </SelectTrigger>
+    <SelectContent>
+      <SelectItem value="Toutes catégories">Toutes catégories</SelectItem>
+      {categories.map((cat: any) => (
+        <SelectItem key={cat.id} value={cat.nom}>{cat.nom}</SelectItem>
+      ))}
+    </SelectContent>
+  </Select>
+  
+  {/* ← AJOUTER CE FILTRE */}
+  {/* Filtre Sous-section (actif seulement si catégorie sélectionnée) */}
+  <Select 
+    value={selectedSousSection} 
+    onValueChange={setSelectedSousSection}
+    disabled={!selectedCategorie || selectedCategorie === "Toutes catégories"}
+  >
+    <SelectTrigger className="w-[200px]">
+      <SelectValue placeholder="Tous" />
+    </SelectTrigger>
+    <SelectContent>
+      <SelectItem value="Tous">Tous</SelectItem>
+      {availableSousSections.map((ss: any) => (
+        <SelectItem key={ss.id} value={ss.nom}>{ss.nom}</SelectItem>
+      ))}
+    </SelectContent>
+  </Select>
+  
+  {/* ... Autres filtres (Prix, Stockable, Inactifs) ... */}
+</div>
+6. Feedback visuel quand désactivé
+Le filtre Sous-section apparaît grisé quand aucune catégorie n'est sélectionnée :
+<SelectTrigger 
+  className={`w-[200px] ${
+    (!selectedCategorie || selectedCategorie === "Toutes catégories") 
+      ? 'opacity-50 cursor-not-allowed' 
+      : ''
+  }`}
+>
+Optionnel : Ajouter tooltip explicatif :
+<div className="relative">
+  <Select 
+    value={selectedSousSection} 
+    onValueChange={setSelectedSousSection}
+    disabled={!selectedCategorie || selectedCategorie === "Toutes catégories"}
+  >
+    <SelectTrigger className="w-[200px]">
+      <SelectValue placeholder="Tous" />
+    </SelectTrigger>
+    <SelectContent>
+      <SelectItem value="Tous">Tous</SelectItem>
+      {availableSousSections.map((ss: any) => (
+        <SelectItem key={ss.id} value={ss.nom}>{ss.nom}</SelectItem>
+      ))}
+    </SelectContent>
+  </Select>
+  
+  {(!selectedCategorie || selectedCategorie === "Toutes catégories") && (
+    <div className="absolute -bottom-6 left-0 text-xs text-muted-foreground italic">
+      Sélectionnez une catégorie d'abord
+    </div>
+  )}
+</div>
+ORDRE FINAL DES FILTRES
+┌──────────────────────────────────────────────────────────────────────────┐
+│ [🔍 Rechercher un produit...]                                            │
+├──────────────────────────────────────────────────────────────────────────┤
+│ [Toutes catégories ▼] [Tous ▼] [Tous les statuts ▼] ☐ Afficher inactifs │
+│                       ↑ Désactivé si catégorie = "Toutes"                │
+└──────────────────────────────────────────────────────────────────────────┘
+COMPORTEMENT
+Scénario 1 : Aucune catégorie sélectionnée
+Catégorie: "Toutes catégories"
+Sous-section: Désactivé (grisé)
+Résultat: Tous les produits affichés
+Scénario 2 : Catégorie sélectionnée sans sous-section
+Catégorie: "Plomberie"
+Sous-section: "Tous" (activé, avec liste des sous-sections de Plomberie)
+Résultat: Tous les produits de Plomberie affichés
+Scénario 3 : Catégorie + Sous-section
+Catégorie: "Plomberie"
+Sous-section: "Tubes PVC"
+Résultat: Seulement les produits Plomberie > Tubes PVC affichés
+Scénario 4 : Retour à "Toutes catégories"
+Catégorie: "Toutes catégories" (changé)
+→ useEffect réinitialise automatiquement Sous-section à "Tous"
+→ Filtre Sous-section désactivé
+TESTS À EFFECTUER
+Tri
+ Clic sur "Stockage" → Tri Stockable puis Non stockable (ou inverse)
+ Clic sur "Sous-section" → Tri alphabétique A→Z puis Z→A
+ Clic sur "Unité" → Tri alphabétique des unités
+ Clic sur "Fournisseur défaut" → Tri alphabétique des noms fournisseurs
+ Clic sur "Régime fiscal" → Tri BRS/Sans TVA/TVA 18%
+ Toutes les colonnes affichent icône tri (↑ ou ↓) selon direction
+ Double-clic sur même colonne → Inverse le tri
+Filtre Sous-section
+ Au chargement : Filtre sous-section désactivé (catégorie = "Toutes")
+ Sélectionner catégorie → Filtre sous-section activé
+ Liste sous-section affiche uniquement celles de la catégorie sélectionnée
+ Sélectionner sous-section → Produits filtrés correctement
+ Retour à "Toutes catégories" → Sous-section réinitialisée à "Tous"
+ Catégorie sans sous-sections → Seule option "Tous" dans le dropdown
+Combinaison filtres
+ Catégorie + Sous-section + Recherche → Filtres cumulatifs
+ Catégorie + Sous-section + Prix (avec/sans) → OK
+ Catégorie + Sous-section + Tri → OK
+POINTS D'ATTENTION
+⚠️ Le tri sur "Stockage" compare booléens (true > false)
+⚠️ Le tri sur "Sous-section" traite NULL/vide comme "Tous" (en premier ou dernier selon direction)
+⚠️ Le filtre Sous-section est STRICTEMENT lié à la catégorie (query dépend de selectedCategorie)
+⚠️ Réinitialiser Sous-section quand catégorie change (évite états incohérents)
+⚠️ Si catégorie n'a aucune sous-section, dropdown affiche seulement "Tous"
+⚠️ Le disabled sur Select doit aussi griser visuellement (opacity-50)
+
+---
+
+## ✅ RÉSUMÉ
+
+### **1. Tri universel**
+Toutes les colonnes deviennent triables :
+- Stockage (Stockable/Non)
+- Sous-section (Alphabétique)
+- Unité (Alphabétique)
+- Fournisseur (Alphabétique)
+- Régime fiscal (BRS/Sans/TVA)
+
+### **2. Filtre Sous-section intelligent**
+- Désactivé par défaut (catégorie = "Toutes")
+- S'active quand catégorie sélectionnée
+- Affiche uniquement sous-sections de cette catégorie
+- Se réinitialise automatiquement si catégorie change
+
+### **3. UX améliorée**
+- Feedback visuel (grisé quand désactivé)
+- Icônes de tri sur tous les en-têtes
+- Filtres combinables
+
+**Prêt à coder !** 🚀

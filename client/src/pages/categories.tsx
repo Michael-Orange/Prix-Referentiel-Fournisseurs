@@ -20,7 +20,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { FolderTree, ArrowRight, Plus } from "lucide-react";
-import type { Categorie, SousSectionWithCategorie } from "@shared/schema";
+import type { Categorie, SousSectionDynamic } from "@shared/schema";
 
 type CategorieWithCount = Categorie & { count: number };
 
@@ -29,19 +29,14 @@ export default function Categories() {
   const { toast } = useToast();
 
   const [isAddCatDialogOpen, setIsAddCatDialogOpen] = useState(false);
-  const [newCategorie, setNewCategorie] = useState({ nom: "", sousSection: "" });
-
-  const [isAddSSDialogOpen, setIsAddSSDialogOpen] = useState(false);
-  const [addSSCategorieId, setAddSSCategorieId] = useState<number | null>(null);
-  const [addSSCategorieName, setAddSSCategorieName] = useState("");
-  const [newSousSectionNom, setNewSousSectionNom] = useState("");
+  const [newCategorieName, setNewCategorieName] = useState("");
 
   const { data, isLoading } = useQuery<{ categories: CategorieWithCount[] }>({
     queryKey: ["/api/referentiel/categories"],
   });
   const categories = data?.categories ?? [];
 
-  const { data: sousSectionsData } = useQuery<SousSectionWithCategorie[]>({
+  const { data: sousSectionsData } = useQuery<SousSectionDynamic[]>({
     queryKey: ["/api/referentiel/sous-sections"],
   });
   const sousSections = sousSectionsData ?? [];
@@ -61,47 +56,19 @@ export default function Categories() {
   });
 
   const createCategorieMutation = useMutation({
-    mutationFn: async (data: { nom: string; sousSection?: string }) => {
-      const catRes = await apiRequest("POST", "/api/referentiel/categories", { nom: data.nom });
-      const categorie = await catRes.json();
-      if (data.sousSection && data.sousSection.trim() !== "" && data.sousSection.toLowerCase() !== "tous") {
-        await apiRequest("POST", "/api/referentiel/sous-sections", {
-          nom: data.sousSection.trim(),
-          categorie_id: categorie.id,
-        });
-      }
-      return categorie;
+    mutationFn: async (nom: string) => {
+      return apiRequest("POST", "/api/referentiel/categories", { nom });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/referentiel/categories"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/referentiel/sous-sections"] });
       toast({ title: "Catégorie créée avec succès" });
       setIsAddCatDialogOpen(false);
-      setNewCategorie({ nom: "", sousSection: "" });
+      setNewCategorieName("");
     },
     onError: (error: any) => {
       toast({
         title: "Erreur",
         description: error.message || "Impossible de créer la catégorie",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const createSousSectionMutation = useMutation({
-    mutationFn: async (data: { nom: string; categorie_id: number }) => {
-      return apiRequest("POST", "/api/referentiel/sous-sections", data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/referentiel/sous-sections"] });
-      toast({ title: "Sous-section créée avec succès" });
-      setIsAddSSDialogOpen(false);
-      setNewSousSectionNom("");
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Erreur",
-        description: error.message || "Impossible de créer la sous-section",
         variant: "destructive",
       });
     },
@@ -137,7 +104,7 @@ export default function Categories() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {categories.map((category) => {
-            const catSousSections = sousSections.filter(ss => ss.categorieId === category.id);
+            const catSousSections = sousSections.filter(ss => ss.categorie === category.nom);
             return (
               <Card
                 key={category.id}
@@ -195,23 +162,6 @@ export default function Categories() {
                           ))}
                         </div>
                       )}
-
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="mt-2 text-xs text-blue-600 hover:text-blue-800 p-0 h-auto"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setAddSSCategorieId(category.id);
-                          setAddSSCategorieName(category.nom);
-                          setNewSousSectionNom("");
-                          setIsAddSSDialogOpen(true);
-                        }}
-                        data-testid={`button-add-ss-${category.id}`}
-                      >
-                        <Plus className="h-3 w-3 mr-1" />
-                        Ajouter sous-section
-                      </Button>
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -233,7 +183,7 @@ export default function Categories() {
           <DialogHeader>
             <DialogTitle>Nouvelle catégorie</DialogTitle>
             <DialogDescription>
-              Créez une nouvelle catégorie de produits. Vous pouvez optionnellement ajouter une sous-section.
+              Créez une nouvelle catégorie de produits.
             </DialogDescription>
           </DialogHeader>
 
@@ -243,25 +193,11 @@ export default function Categories() {
               <Input
                 id="nom-categorie"
                 placeholder="Ex: Plomberie et Irrigation"
-                value={newCategorie.nom}
-                onChange={(e) => setNewCategorie({ ...newCategorie, nom: e.target.value })}
+                value={newCategorieName}
+                onChange={(e) => setNewCategorieName(e.target.value)}
                 autoFocus
                 data-testid="input-new-categorie-nom"
               />
-            </div>
-
-            <div>
-              <Label htmlFor="sous-section-init">Sous-section (optionnel)</Label>
-              <Input
-                id="sous-section-init"
-                placeholder="Ex: Tubes PVC ou laissez vide"
-                value={newCategorie.sousSection}
-                onChange={(e) => setNewCategorie({ ...newCategorie, sousSection: e.target.value })}
-                data-testid="input-new-categorie-ss"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Laissez vide ou écrivez "Tous" pour ne pas créer de sous-section
-              </p>
             </div>
           </div>
 
@@ -270,62 +206,17 @@ export default function Categories() {
               variant="outline"
               onClick={() => {
                 setIsAddCatDialogOpen(false);
-                setNewCategorie({ nom: "", sousSection: "" });
+                setNewCategorieName("");
               }}
             >
               Annuler
             </Button>
             <Button
-              onClick={() => createCategorieMutation.mutate(newCategorie)}
-              disabled={!newCategorie.nom.trim() || createCategorieMutation.isPending}
+              onClick={() => createCategorieMutation.mutate(newCategorieName.trim())}
+              disabled={!newCategorieName.trim() || createCategorieMutation.isPending}
               data-testid="button-submit-categorie"
             >
               {createCategorieMutation.isPending ? "Création..." : "Créer"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={isAddSSDialogOpen} onOpenChange={setIsAddSSDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Nouvelle sous-section</DialogTitle>
-            <DialogDescription>
-              Ajouter une sous-section à la catégorie "{addSSCategorieName}"
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-4">
-            <div>
-              <Label htmlFor="nom-ss">Nom de la sous-section *</Label>
-              <Input
-                id="nom-ss"
-                placeholder="Ex: Tubes PVC"
-                value={newSousSectionNom}
-                onChange={(e) => setNewSousSectionNom(e.target.value)}
-                autoFocus
-                data-testid="input-new-ss-nom"
-              />
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsAddSSDialogOpen(false)}>
-              Annuler
-            </Button>
-            <Button
-              onClick={() => {
-                if (addSSCategorieId) {
-                  createSousSectionMutation.mutate({
-                    nom: newSousSectionNom,
-                    categorie_id: addSSCategorieId,
-                  });
-                }
-              }}
-              disabled={!newSousSectionNom.trim() || createSousSectionMutation.isPending}
-              data-testid="button-submit-ss"
-            >
-              {createSousSectionMutation.isPending ? "Création..." : "Créer"}
             </Button>
           </DialogFooter>
         </DialogContent>

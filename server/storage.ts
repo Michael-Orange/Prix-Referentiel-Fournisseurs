@@ -3,7 +3,6 @@ import { eq, desc, and, sql, asc, count } from "drizzle-orm";
 import {
   fournisseurs,
   categories,
-  sousSections,
   unites,
   produitsMaster,
   prixFournisseurs,
@@ -16,9 +15,6 @@ import {
   type InsertFournisseur,
   type Categorie,
   type InsertCategorie,
-  type SousSection,
-  type InsertSousSection,
-  type SousSectionWithCategorie,
   type Unite,
   type ProduitMaster,
   type InsertProduitMaster,
@@ -29,6 +25,7 @@ import {
   type ProduitWithPrixDefaut,
   type ProduitDetail,
   type FournisseurWithStats,
+  type SousSectionDynamic,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -42,8 +39,7 @@ export interface IStorage {
   getCategories(): Promise<(Categorie & { count: number })[]>;
   createCategorie(data: InsertCategorie): Promise<Categorie>;
   toggleCategorieStockable(id: number, estStockable: boolean): Promise<Categorie | undefined>;
-  getSousSections(): Promise<SousSectionWithCategorie[]>;
-  createSousSection(data: InsertSousSection): Promise<SousSection>;
+  getSousSectionsDynamiques(categorie?: string): Promise<SousSectionDynamic[]>;
   getUnites(): Promise<Unite[]>;
 
   getProduits(filters?: { categorie?: string; stockable?: boolean; actif?: boolean; includeInactifs?: boolean; avecPrix?: boolean }): Promise<ProduitWithPrixDefaut[]>;
@@ -176,23 +172,29 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async getSousSections(): Promise<SousSectionWithCategorie[]> {
-    const rows = await db
-      .select({
-        id: sousSections.id,
-        nom: sousSections.nom,
-        categorieId: sousSections.categorieId,
-        categorie: categories.nom,
-      })
-      .from(sousSections)
-      .leftJoin(categories, eq(sousSections.categorieId, categories.id))
-      .orderBy(asc(categories.nom), asc(sousSections.nom));
-    return rows.map(r => ({ ...r, categorie: r.categorie || "" }));
-  }
-
-  async createSousSection(data: InsertSousSection): Promise<SousSection> {
-    const [result] = await db.insert(sousSections).values(data).returning();
-    return result;
+  async getSousSectionsDynamiques(categorie?: string): Promise<SousSectionDynamic[]> {
+    const client = await pool.connect();
+    try {
+      let query = `
+        SELECT DISTINCT sous_section, categorie
+        FROM referentiel.produits_master
+        WHERE sous_section IS NOT NULL AND sous_section != '' AND actif = true
+      `;
+      const params: string[] = [];
+      if (categorie) {
+        query += ` AND categorie = $1`;
+        params.push(categorie);
+      }
+      query += ` ORDER BY categorie, sous_section`;
+      const result = await client.query(query, params);
+      return result.rows.map((row: any) => ({
+        id: `${row.categorie}_${row.sous_section}`,
+        nom: row.sous_section,
+        categorie: row.categorie,
+      }));
+    } finally {
+      client.release();
+    }
   }
 
   async getUnites(): Promise<Unite[]> {
@@ -312,10 +314,12 @@ export class DatabaseStorage implements IStorage {
   async createProduit(data: InsertProduitMaster): Promise<ProduitMaster> {
     const nomTitleCase = normalizeProductName(data.nom);
     const nomNormalise = normaliserNom(nomTitleCase);
+    const sousSection = data.sousSection?.trim();
     const [result] = await db.insert(produitsMaster).values({
       ...data,
       nom: nomTitleCase,
       nomNormalise,
+      sousSection: (!sousSection || sousSection.toLowerCase() === "tous") ? null : sousSection,
     }).returning();
     return result;
   }

@@ -35,9 +35,8 @@ Preferred communication style: Simple, everyday language.
 
 #### Schema `referentiel` (shared product data)
 1. **categories**: Product categories with ordering, estStockable
-2. **sous_sections**: Sub-sections within categories (nom, categorieId FK, unique per category)
-3. **unites**: Units of measure (code, libelle, type)
-4. **produits_master**: Master product catalog (nom, nomNormalise, categorie, unite, sousSection, estStockable, sourceApp)
+2. **unites**: Units of measure (code, libelle, type)
+3. **produits_master**: Master product catalog (nom, nomNormalise, categorie, sous_section (TEXT, dynamic), unite, estStockable, sourceApp)
 
 #### Schema `prix` (supplier pricing)
 4. **fournisseurs**: Suppliers with fiscal regime (statutTva: tva_18, sans_tva, brs_5)
@@ -117,13 +116,14 @@ BRS 5%:   prixTtc = null, prixBrs = prixHt / 0.95
 - **zod** + **drizzle-zod**: Runtime schema validation
 
 ## Recent Changes (2026-02-21)
-- Sous-sections (sub-sections): hierarchical product categorization within categories
-  - New sous_sections table with unique constraint (categorie_id, nom), FK to categories
-  - Categories page: "Ajouter une catégorie" dialog, sous-section badges, add sous-section button per card
-  - Products creation form: sous-section Select dropdown filtered by selected category, resets on category change
-  - Products table: editable "Sous-section" column between Catégorie and Unité with inline Select
-  - PATCH produit supports sousSection/sous_section field update
-  - GET/POST /api/referentiel/sous-sections and POST /api/referentiel/categories endpoints
+- Sous-sections: dynamic product sub-categorization via produits_master.sous_section TEXT column
+  - No separate table: sous-sections derived dynamically via DISTINCT query on produits_master
+  - GET /api/referentiel/sous-sections?categorie=X returns distinct values from products
+  - Categories page: shows existing sous-sections as badges (read from products), simplified creation dialog (category name only)
+  - Products creation form: Input with datalist for sous-section (free text + existing suggestions), filtered by category
+  - Products table: editable "Sous-section" column between Catégorie and Unité with Input + datalist
+  - PATCH produit normalizes sousSection ("Tous"/empty → null)
+  - POST /api/referentiel/categories endpoint for category creation
 - Category-level stockage control: estStockable column on categories, PATCH toggle endpoint with cascade to products
 - Categories page: clickable green/red stockage badges, product count display, confirmation dialogs for toggle
 - Inline edit validation: price requires fournisseur + régime fiscal, red borders + toast feedback, disabled save button with tooltip

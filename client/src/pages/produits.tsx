@@ -61,7 +61,7 @@ import type {
   Fournisseur,
   PrixFournisseur,
   HistoriquePrix,
-  SousSectionWithCategorie,
+  SousSectionDynamic,
   REGIMES_FISCAUX,
 } from "@shared/schema";
 import { calculerPrix, normalizeProductName } from "@shared/schema";
@@ -157,7 +157,7 @@ export default function Produits() {
     queryKey: ["/api/fournisseurs"],
   });
 
-  const { data: sousSectionsData = [] } = useQuery<SousSectionWithCategorie[]>({
+  const { data: sousSectionsData = [] } = useQuery<SousSectionDynamic[]>({
     queryKey: ["/api/referentiel/sous-sections"],
   });
 
@@ -597,33 +597,28 @@ export default function Produits() {
         const isEditing = editingRow === p.id;
         if (isEditing) {
           const ssSections = getSousSectionsForCategorie(p.categorie);
+          const listId = `ss-edit-${p.id}`;
           return (
-            <Select
-              value={editForm.sousSection || "Tous"}
-              onValueChange={(v) => setEditForm({
-                ...editForm,
-                sousSection: v === "Tous" ? "" : v,
-              })}
-            >
-              <SelectTrigger
+            <div onClick={(e) => e.stopPropagation()}>
+              <Input
                 className="h-8 text-sm w-[150px]"
-                onClick={(e) => e.stopPropagation()}
-                data-testid={`select-edit-ss-${p.id}`}
-              >
-                <SelectValue placeholder="Tous" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Tous">Tous</SelectItem>
+                list={listId}
+                value={editForm.sousSection}
+                onChange={(e) => setEditForm({ ...editForm, sousSection: e.target.value })}
+                placeholder="Tous"
+                data-testid={`input-edit-ss-${p.id}`}
+              />
+              <datalist id={listId}>
                 {ssSections.map((ss) => (
-                  <SelectItem key={ss.id} value={ss.nom}>{ss.nom}</SelectItem>
+                  <option key={ss.id} value={ss.nom} />
                 ))}
-              </SelectContent>
-            </Select>
+              </datalist>
+            </div>
           );
         }
         return (
           <span className="text-sm text-muted-foreground">
-            {p.sousSection || "Tous"}
+            {p.sousSection || "—"}
           </span>
         );
       },
@@ -1032,27 +1027,26 @@ export default function Produits() {
 
             <div className="space-y-2">
               <Label htmlFor="prod-ss">Sous-section (optionnel)</Label>
-              <Select
-                value={productForm.sousSection || "Tous"}
-                onValueChange={(v) => setProductForm({ ...productForm, sousSection: v === "Tous" ? "" : v })}
-                disabled={!productForm.categorie}
-              >
-                <SelectTrigger data-testid="select-product-soussection">
-                  <SelectValue placeholder="Choisir une sous-section..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Tous">Tous (pas de sous-section)</SelectItem>
+              <div className="relative">
+                <Input
+                  id="prod-ss"
+                  list="ss-suggestions"
+                  value={productForm.sousSection}
+                  onChange={(e) => setProductForm({ ...productForm, sousSection: e.target.value })}
+                  placeholder={!productForm.categorie ? "Sélectionnez d'abord une catégorie" : "Tapez ou choisissez..."}
+                  disabled={!productForm.categorie}
+                  data-testid="input-product-soussection"
+                />
+                <datalist id="ss-suggestions">
                   {getSousSectionsForCategorie(productForm.categorie).map((ss) => (
-                    <SelectItem key={ss.id} value={ss.nom}>{ss.nom}</SelectItem>
+                    <option key={ss.id} value={ss.nom} />
                   ))}
-                </SelectContent>
-              </Select>
+                </datalist>
+              </div>
               <p className="text-xs text-muted-foreground mt-1">
                 {!productForm.categorie
                   ? "Sélectionnez d'abord une catégorie"
-                  : getSousSectionsForCategorie(productForm.categorie).length === 0
-                    ? "Aucune sous-section pour cette catégorie"
-                    : "Choisissez une sous-section ou 'Tous'"
+                  : "Tapez une nouvelle sous-section ou choisissez parmi les existantes"
                 }
               </p>
             </div>

@@ -264,42 +264,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/referentiel/sous-sections", authOrScope("referentiel:read"), async (_req, res) => {
+  app.get("/api/referentiel/sous-sections", authOrScope("referentiel:read"), async (req, res) => {
     try {
-      const rows = await storage.getSousSections();
+      const categorie = req.query.categorie as string | undefined;
+      const rows = await storage.getSousSectionsDynamiques(categorie);
       res.json(rows);
     } catch (error: any) {
       console.error("Erreur récupération sous-sections:", error);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.post("/api/referentiel/sous-sections", authOrScope("referentiel:write"), async (req, res) => {
-    try {
-      const { nom, categorie_id } = req.body;
-      if (!nom || nom.trim() === "") {
-        return res.status(400).json({ error: "Nom de sous-section requis" });
-      }
-      if (!categorie_id) {
-        return res.status(400).json({ error: "categorie_id requis" });
-      }
-      const cats = await storage.getCategories();
-      const cat = cats.find(c => c.id === categorie_id);
-      if (!cat) {
-        return res.status(404).json({ error: "Catégorie introuvable" });
-      }
-      const existingSS = await storage.getSousSections();
-      const duplicate = existingSS.find(ss => ss.nom === nom.trim() && ss.categorieId === categorie_id);
-      if (duplicate) {
-        return res.status(400).json({ error: "Cette sous-section existe déjà pour cette catégorie" });
-      }
-      const sousSection = await storage.createSousSection({
-        nom: nom.trim(),
-        categorieId: categorie_id,
-      });
-      res.status(201).json(sousSection);
-    } catch (error: any) {
-      console.error("Erreur création sous-section:", error);
       res.status(500).json({ error: error.message });
     }
   });
@@ -390,8 +361,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (req.body.nom !== undefined) updateData.nom = req.body.nom;
       if (req.body.estStockable !== undefined) updateData.estStockable = req.body.estStockable;
       if (req.body.est_stockable !== undefined) updateData.estStockable = req.body.est_stockable;
-      if (req.body.sousSection !== undefined) updateData.sousSection = req.body.sousSection === "" ? null : req.body.sousSection;
-      if (req.body.sous_section !== undefined) updateData.sousSection = req.body.sous_section === "" ? null : req.body.sous_section;
+      if (req.body.sousSection !== undefined) {
+        const val = req.body.sousSection?.trim();
+        updateData.sousSection = (!val || val.toLowerCase() === "tous") ? null : val;
+      }
+      if (req.body.sous_section !== undefined) {
+        const val = req.body.sous_section?.trim();
+        updateData.sousSection = (!val || val.toLowerCase() === "tous") ? null : val;
+      }
       const produit = await storage.updateProduit(parseInt(req.params.id), updateData);
       if (!produit) return res.status(404).json({ error: "Produit non trouvé" });
       res.json(produit);
