@@ -50,6 +50,8 @@ import {
   ChevronUp,
   ChevronDown,
   ChevronsUpDown,
+  XCircle,
+  CheckCircle,
 } from "lucide-react";
 import type {
   ProduitWithPrixDefaut,
@@ -79,6 +81,7 @@ export default function Produits() {
   const [filterCategorie, setFilterCategorie] = useState<string>(categorieFromUrl || "all");
   const [filterPrix, setFilterPrix] = useState<string>("all");
   const [filterStockable, setFilterStockable] = useState<string>("all");
+  const [includeInactifs, setIncludeInactifs] = useState(false);
 
   const [isProductDialogOpen, setIsProductDialogOpen] = useState(false);
   const [isPriceDialogOpen, setIsPriceDialogOpen] = useState(false);
@@ -108,8 +111,14 @@ export default function Produits() {
     est_fournisseur_defaut: false,
   });
 
+  const produitsUrl = includeInactifs ? "/api/referentiel/produits?includeInactifs=true" : "/api/referentiel/produits";
   const { data: produitsData, isLoading } = useQuery<{ produits: ProduitWithPrixDefaut[] }>({
-    queryKey: ["/api/referentiel/produits"],
+    queryKey: ["/api/referentiel/produits", { includeInactifs }],
+    queryFn: async () => {
+      const res = await fetch(produitsUrl, { credentials: "include" });
+      if (!res.ok) throw new Error("Erreur chargement produits");
+      return res.json();
+    },
   });
   const produits = produitsData?.produits ?? [];
 
@@ -197,6 +206,40 @@ export default function Produits() {
         queryClient.invalidateQueries({ queryKey: ["/api/referentiel/produits", selectedProductId] });
       }
       toast({ title: "Fournisseur par défaut mis à jour" });
+    },
+  });
+
+  const desactiverMutation = useMutation({
+    mutationFn: async (produitId: number) => {
+      return apiRequest("PATCH", `/api/referentiel/produits/${produitId}/desactiver`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/referentiel/produits"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      if (selectedProductId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/referentiel/produits", selectedProductId] });
+      }
+      toast({ title: "Produit désactivé", description: "Le produit a été masqué de la liste par défaut" });
+    },
+    onError: () => {
+      toast({ title: "Erreur", description: "Impossible de désactiver le produit", variant: "destructive" });
+    },
+  });
+
+  const reactiverMutation = useMutation({
+    mutationFn: async (produitId: number) => {
+      return apiRequest("PATCH", `/api/referentiel/produits/${produitId}/reactiver`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/referentiel/produits"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      if (selectedProductId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/referentiel/produits", selectedProductId] });
+      }
+      toast({ title: "Produit réactivé", description: "Le produit est de nouveau visible" });
+    },
+    onError: () => {
+      toast({ title: "Erreur", description: "Impossible de réactiver le produit", variant: "destructive" });
     },
   });
 
@@ -294,9 +337,10 @@ export default function Produits() {
       key: "nom",
       header: (<div className="flex items-center gap-1 cursor-pointer select-none" onClick={() => handleSort('nom')} data-testid="sort-nom"><span>Produit</span><SortIcon columnKey="nom" /></div>),
       render: (p: ProduitWithPrixDefaut) => (
-        <div>
-          <span className="font-medium" data-testid={`text-produit-${p.id}`}>{p.nom}</span>
-          {p.estStockable && <Badge variant="outline" className="ml-2 text-xs">Stockable</Badge>}
+        <div className="flex items-center gap-2">
+          <span className={`font-medium ${!p.actif ? 'text-muted-foreground line-through' : ''}`} data-testid={`text-produit-${p.id}`}>{p.nom}</span>
+          {!p.actif && <Badge variant="secondary" className="text-xs bg-gray-200 text-gray-600" data-testid={`badge-inactif-${p.id}`}>Inactif</Badge>}
+          {p.estStockable && <Badge variant="outline" className="text-xs">Stockable</Badge>}
         </div>
       ),
     },
@@ -374,9 +418,28 @@ export default function Produits() {
       header: "",
       className: "text-right",
       render: (p: ProduitWithPrixDefaut) => (
-        <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); setSelectedProductId(p.id); }} data-testid={`button-view-${p.id}`}>
-          <Eye className="h-4 w-4" />
-        </Button>
+        <div className="flex items-center justify-end gap-1">
+          <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); setSelectedProductId(p.id); }} data-testid={`button-view-${p.id}`}>
+            <Eye className="h-4 w-4" />
+          </Button>
+          {p.actif ? (
+            <Button variant="ghost" size="icon" className="text-red-500 hover:text-red-700" onClick={(e) => {
+              e.stopPropagation();
+              if (confirm("Désactiver ce produit ? Il sera masqué de la liste par défaut.")) {
+                desactiverMutation.mutate(p.id);
+              }
+            }} data-testid={`button-desactiver-${p.id}`}>
+              <XCircle className="h-4 w-4" />
+            </Button>
+          ) : (
+            <Button variant="ghost" size="icon" className="text-green-600 hover:text-green-800" onClick={(e) => {
+              e.stopPropagation();
+              reactiverMutation.mutate(p.id);
+            }} data-testid={`button-reactiver-${p.id}`}>
+              <CheckCircle className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
       ),
     },
   ];
@@ -390,7 +453,7 @@ export default function Produits() {
         </Button>
       </PageHeader>
 
-      <div className="flex flex-col sm:flex-row gap-4 mb-6 flex-wrap">
+      <div className="flex flex-col sm:flex-row gap-4 mb-6 flex-wrap items-center">
         <SearchInput value={search} onChange={setSearch} placeholder="Rechercher un produit..." className="flex-1 min-w-[200px] max-w-sm" />
         <Select value={filterCategorie} onValueChange={setFilterCategorie}>
           <SelectTrigger className="w-[200px]" data-testid="select-filter-categorie">
@@ -423,6 +486,14 @@ export default function Produits() {
             <SelectItem value="non">Non stockable</SelectItem>
           </SelectContent>
         </Select>
+        <label className="flex items-center gap-2 text-sm cursor-pointer whitespace-nowrap" data-testid="label-include-inactifs">
+          <Checkbox
+            checked={includeInactifs}
+            onCheckedChange={(checked) => setIncludeInactifs(!!checked)}
+            data-testid="checkbox-include-inactifs"
+          />
+          <span className="text-muted-foreground">Afficher inactifs</span>
+        </label>
       </div>
 
       <DataTable
@@ -433,6 +504,7 @@ export default function Produits() {
         emptyTitle="Aucun produit"
         emptyDescription="Aucun produit ne correspond aux filtres"
         onRowClick={(p) => setSelectedProductId(p.id)}
+        rowClassName={(p) => !p.actif ? "opacity-60 bg-gray-50" : ""}
       />
 
       {/* Create Product Dialog */}
@@ -706,6 +778,19 @@ export default function Produits() {
 
           {selectedProduct && (
             <div className="mt-6 space-y-6">
+              {!selectedProduct.actif && (
+                <div className="rounded-lg border border-gray-300 bg-gray-50 p-3 flex items-center justify-between" data-testid="banner-inactif">
+                  <div className="flex items-center gap-2 text-gray-600">
+                    <XCircle className="h-4 w-4" />
+                    <span className="text-sm font-medium">Produit inactif</span>
+                  </div>
+                  <Button size="sm" variant="outline" className="text-green-600 border-green-300 hover:bg-green-50" onClick={() => reactiverMutation.mutate(selectedProduct.id)} data-testid="button-reactiver-detail">
+                    <CheckCircle className="h-3.5 w-3.5 mr-1" />
+                    Réactiver
+                  </Button>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div><span className="text-muted-foreground">Catégorie:</span><p className="font-medium">{selectedProduct.categorie}</p></div>
                 <div><span className="text-muted-foreground">Unité:</span><p className="font-medium">{selectedProduct.unite}</p></div>
@@ -717,13 +802,14 @@ export default function Produits() {
                 <Checkbox
                   id="stockable-toggle"
                   checked={selectedProduct.estStockable}
+                  disabled={!selectedProduct.actif}
                   onCheckedChange={(checked) => {
                     toggleStockableMutation.mutate({ id: selectedProduct.id, estStockable: !!checked });
                   }}
                   data-testid="checkbox-stockable"
                 />
-                <Label htmlFor="stockable-toggle" className="cursor-pointer text-sm">
-                  Produit stockable
+                <Label htmlFor="stockable-toggle" className={`cursor-pointer text-sm ${!selectedProduct.actif ? 'text-muted-foreground' : ''}`}>
+                  Produit stockable {!selectedProduct.actif && "(inactif)"}
                 </Label>
               </div>
 
@@ -744,6 +830,19 @@ export default function Produits() {
                   )}
                 </div>
               </div>
+
+              {selectedProduct.actif && (
+                <div className="pt-2">
+                  <Button variant="outline" size="sm" className="text-red-500 border-red-200 hover:bg-red-50" onClick={() => {
+                    if (confirm("Désactiver ce produit ? Il sera masqué de la liste par défaut.")) {
+                      desactiverMutation.mutate(selectedProduct.id);
+                    }
+                  }} data-testid="button-desactiver-detail">
+                    <XCircle className="h-3.5 w-3.5 mr-1" />
+                    Désactiver ce produit
+                  </Button>
+                </div>
+              )}
 
               <div>
                 <div className="flex items-center justify-between mb-3">

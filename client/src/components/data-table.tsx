@@ -29,6 +29,7 @@ interface DataTableProps<T> {
   onEmptyAction?: () => void;
   className?: string;
   onRowClick?: (item: T) => void;
+  rowClassName?: (item: T) => string;
 }
 
 export function DataTable<T>({
@@ -42,6 +43,7 @@ export function DataTable<T>({
   onEmptyAction,
   className,
   onRowClick,
+  rowClassName,
 }: DataTableProps<T>) {
   if (isLoading) {
     return <LoadingState />;
@@ -76,7 +78,8 @@ export function DataTable<T>({
             <TableRow 
               key={index}
               className={cn(
-                onRowClick && "cursor-pointer hover:bg-muted/50"
+                onRowClick && "cursor-pointer hover:bg-muted/50",
+                rowClassName?.(item)
               )}
               onClick={() => onRowClick?.(item)}
             >

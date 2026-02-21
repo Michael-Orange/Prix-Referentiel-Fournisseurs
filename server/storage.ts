@@ -36,7 +36,9 @@ export interface IStorage {
   getCategories(): Promise<Categorie[]>;
   getUnites(): Promise<Unite[]>;
 
-  getProduits(filters?: { categorie?: string; stockable?: boolean; actif?: boolean; avecPrix?: boolean }): Promise<ProduitWithPrixDefaut[]>;
+  getProduits(filters?: { categorie?: string; stockable?: boolean; actif?: boolean; includeInactifs?: boolean; avecPrix?: boolean }): Promise<ProduitWithPrixDefaut[]>;
+  desactiverProduit(id: number): Promise<ProduitMaster | undefined>;
+  reactiverProduit(id: number): Promise<ProduitMaster | undefined>;
   getProduit(id: number): Promise<ProduitDetail | undefined>;
   createProduit(data: InsertProduitMaster): Promise<ProduitMaster>;
   updateProduit(id: number, data: Partial<InsertProduitMaster>): Promise<ProduitMaster | undefined>;
@@ -116,10 +118,14 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(unites).orderBy(asc(unites.libelle));
   }
 
-  async getProduits(filters?: { categorie?: string; stockable?: boolean; actif?: boolean; avecPrix?: boolean }): Promise<ProduitWithPrixDefaut[]> {
+  async getProduits(filters?: { categorie?: string; stockable?: boolean; actif?: boolean; includeInactifs?: boolean; avecPrix?: boolean }): Promise<ProduitWithPrixDefaut[]> {
     const conditions = [];
-    if (filters?.actif !== undefined) conditions.push(eq(produitsMaster.actif, filters.actif));
-    else conditions.push(eq(produitsMaster.actif, true));
+    if (filters?.includeInactifs) {
+    } else if (filters?.actif !== undefined) {
+      conditions.push(eq(produitsMaster.actif, filters.actif));
+    } else {
+      conditions.push(eq(produitsMaster.actif, true));
+    }
     if (filters?.categorie) conditions.push(eq(produitsMaster.categorie, filters.categorie));
     if (filters?.stockable !== undefined) conditions.push(eq(produitsMaster.estStockable, filters.stockable));
 
@@ -220,6 +226,31 @@ export class DatabaseStorage implements IStorage {
       updateData.nomNormalise = normaliserNom(nomTitleCase);
     }
     const [result] = await db.update(produitsMaster).set(updateData).where(eq(produitsMaster.id, id)).returning();
+    return result;
+  }
+
+  async desactiverProduit(id: number): Promise<ProduitMaster | undefined> {
+    const [result] = await db
+      .update(produitsMaster)
+      .set({
+        actif: false,
+        estStockable: false,
+        dateModification: new Date(),
+      })
+      .where(eq(produitsMaster.id, id))
+      .returning();
+    return result;
+  }
+
+  async reactiverProduit(id: number): Promise<ProduitMaster | undefined> {
+    const [result] = await db
+      .update(produitsMaster)
+      .set({
+        actif: true,
+        dateModification: new Date(),
+      })
+      .where(eq(produitsMaster.id, id))
+      .returning();
     return result;
   }
 

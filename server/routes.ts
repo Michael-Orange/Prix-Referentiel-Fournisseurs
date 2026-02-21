@@ -237,7 +237,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const filters: any = {};
       if (req.query.categorie) filters.categorie = req.query.categorie as string;
       if (req.query.stockable !== undefined) filters.stockable = req.query.stockable === "true";
-      if (req.query.actif !== undefined) filters.actif = req.query.actif === "true";
+      if (req.query.includeInactifs === "true") filters.includeInactifs = true;
+      else if (req.query.actif !== undefined) filters.actif = req.query.actif === "true";
       if (req.query.avec_prix !== undefined) filters.avecPrix = req.query.avec_prix === "true";
       res.json({ produits: await storage.getProduits(filters) });
     } catch (error) {
@@ -296,9 +297,37 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  app.patch("/api/referentiel/produits/:id/desactiver", authOrScope("referentiel:write"), async (req, res) => {
+    try {
+      const produit = await storage.desactiverProduit(parseInt(req.params.id));
+      if (!produit) return res.status(404).json({ error: "Produit introuvable" });
+      res.json({ message: "Produit désactivé", produit });
+    } catch (error) {
+      console.error("Error:", error);
+      res.status(500).json({ error: "Erreur serveur" });
+    }
+  });
+
+  app.patch("/api/referentiel/produits/:id/reactiver", authOrScope("referentiel:write"), async (req, res) => {
+    try {
+      const produit = await storage.reactiverProduit(parseInt(req.params.id));
+      if (!produit) return res.status(404).json({ error: "Produit introuvable" });
+      res.json({ message: "Produit réactivé", produit });
+    } catch (error) {
+      console.error("Error:", error);
+      res.status(500).json({ error: "Erreur serveur" });
+    }
+  });
+
   app.patch("/api/referentiel/produits/:id/stockable", authOrScope("stock:write"), async (req, res) => {
     try {
       const { est_stockable } = req.body;
+      if (est_stockable) {
+        const existing = await storage.getProduit(parseInt(req.params.id));
+        if (existing && !existing.actif) {
+          return res.status(400).json({ error: "Un produit inactif ne peut pas être marqué stockable" });
+        }
+      }
       const produit = await storage.updateProduit(parseInt(req.params.id), { estStockable: est_stockable });
       if (!produit) return res.status(404).json({ error: "Produit non trouvé" });
       res.json(produit);
