@@ -1,0 +1,304 @@
+Copie-colle ce bloc EN COMPLÉMENT des briefs précédents :
+# AJOUT : VALIDATION OBLIGATOIRE FOURNISSEUR + RÉGIME FISCAL
+
+## OBJECTIF
+Empêcher la sauvegarde d'un prix HT sans fournisseur et régime fiscal associés
+
+## RÈGLE MÉTIER
+Si Prix HT > 0 :
+  ✅ Fournisseur obligatoire
+  ✅ Régime fiscal obligatoire
+  
+Si Prix HT = 0 ou vide :
+  → Permet sauvegarde sans fournisseur (produit sans prix)
+
+## MODIFICATIONS DANS client/src/pages/produits.tsx
+
+### 1. Ajouter état de validation
+
+Après la déclaration de `editForm`, ajouter :
+
+```typescript
+const [validationErrors, setValidationErrors] = useState<{
+  fournisseur?: boolean;
+  regimeFiscal?: boolean;
+  prixHt?: boolean;
+}>({});
+2. Créer fonction de validation
+Avant la fonction saveEditing(), ajouter :
+const validateEditForm = (): boolean => {
+  const errors: typeof validationErrors = {};
+  
+  // Si un prix HT est saisi
+  if (editForm.prixHt && editForm.prixHt > 0) {
+    // Fournisseur obligatoire
+    if (!editForm.fournisseurId) {
+      errors.fournisseur = true;
+    }
+    
+    // Régime fiscal obligatoire (normalement toujours défini par défaut)
+    if (!editForm.regimeFiscal) {
+      errors.regimeFiscal = true;
+    }
+  }
+  
+  setValidationErrors(errors);
+  return Object.keys(errors).length === 0;
+};
+3. Modifier fonction saveEditing avec validation
+REMPLACER la fonction saveEditing() par :
+const saveEditing = () => {
+  // Valider avant de sauvegarder
+  if (!validateEditForm()) {
+    toast({ 
+      title: "Validation échouée", 
+      description: "Si vous saisissez un prix, vous devez sélectionner un fournisseur et un régime fiscal.", 
+      variant: "destructive" 
+    });
+    return;
+  }
+  
+  const changes: any = { produitId: editForm.produitId };
+  
+  const originalProduct = sortedProduits.find(p => p.id === editForm.produitId);
+  if (!originalProduct) return;
+  
+  // Changement nom
+  if (editForm.nom !== originalProduct.nom) {
+    changes.produitNom = editForm.nom;
+  }
+  
+  // Changement stockage
+  if (editForm.estStockable !== originalProduct.estStockable) {
+    changes.estStockable = editForm.estStockable;
+  }
+  
+  // Changement prix/fournisseur (seulement si prix > 0)
+  if (editForm.prixHt > 0 && editForm.fournisseurId && editForm.regimeFiscal) {
+    const origFourn = originalProduct.fournisseurDefaut?.id;
+    const origPrix = originalProduct.fournisseurDefaut?.prixHt;
+    const origRegime = originalProduct.fournisseurDefaut?.regimeFiscal;
+    
+    if (
+      editForm.fournisseurId !== origFourn ||
+      editForm.prixHt !== origPrix ||
+      editForm.regimeFiscal !== origRegime
+    ) {
+      changes.fournisseurId = editForm.fournisseurId;
+      changes.prixHt = editForm.prixHt;
+      changes.regimeFiscal = editForm.regimeFiscal;
+    }
+  }
+  
+  if (Object.keys(changes).length === 1) {
+    setEditingRow(null);
+    return;
+  }
+  
+  updateProductPriceMutation.mutate(changes);
+};
+4. Réinitialiser erreurs lors de changements
+Modifier les setters de editForm pour réinitialiser les erreurs :
+// Pour le fournisseur
+<Select 
+  value={editForm.fournisseurId?.toString() || ""} 
+  onValueChange={(v) => {
+    setEditForm({ ...editForm, fournisseurId: parseInt(v) });
+    setValidationErrors({ ...validationErrors, fournisseur: false });  // ← AJOUTER
+  }}
+>
+
+// Pour le prix HT
+<Input
+  type="number"
+  min="0"
+  value={editForm.prixHt || ""}
+  onChange={(e) => {
+    setEditForm({ ...editForm, prixHt: parseFloat(e.target.value) || 0 });
+    setValidationErrors({});  // ← AJOUTER (reset toutes erreurs car prix changé)
+  }}
+  className="h-8 text-sm text-right"
+/>
+
+// Pour le régime fiscal
+<Select 
+  value={editForm.regimeFiscal} 
+  onValueChange={(v) => {
+    setEditForm({ ...editForm, regimeFiscal: v });
+    setValidationErrors({ ...validationErrors, regimeFiscal: false });  // ← AJOUTER
+  }}
+>
+5. Ajouter feedback visuel sur champs en erreur
+Dans la colonne Fournisseur, ajouter bordure rouge si erreur :
+<Select 
+  value={editForm.fournisseurId?.toString() || ""} 
+  onValueChange={(v) => {
+    setEditForm({ ...editForm, fournisseurId: parseInt(v) });
+    setValidationErrors({ ...validationErrors, fournisseur: false });
+  }}
+>
+  <SelectTrigger 
+    className={`h-8 text-sm ${
+      validationErrors.fournisseur ? 'border-red-500 ring-2 ring-red-200' : ''
+    }`}
+    onClick={(e) => e.stopPropagation()}
+  >
+    <SelectValue placeholder="Choisir..." />
+  </SelectTrigger>
+  <SelectContent>
+    {fournisseurs.map((f: any) => (
+      <SelectItem key={f.id} value={f.id.toString()}>{f.nom}</SelectItem>
+    ))}
+  </SelectContent>
+</Select>
+Dans la colonne Régime fiscal, pareil :
+<Select 
+  value={editForm.regimeFiscal} 
+  onValueChange={(v) => {
+    setEditForm({ ...editForm, regimeFiscal: v });
+    setValidationErrors({ ...validationErrors, regimeFiscal: false });
+  }}
+>
+  <SelectTrigger 
+    className={`h-8 text-sm ${
+      validationErrors.regimeFiscal ? 'border-red-500 ring-2 ring-red-200' : ''
+    }`}
+    onClick={(e) => e.stopPropagation()}
+  >
+    <SelectValue />
+  </SelectTrigger>
+  <SelectContent>
+    <SelectItem value="tva_18">TVA 18%</SelectItem>
+    <SelectItem value="sans_tva">Sans TVA</SelectItem>
+    <SelectItem value="brs_5">BRS 5%</SelectItem>
+  </SelectContent>
+</Select>
+6. Désactiver bouton Valider si validation échoue (optionnel)
+Dans la colonne Actions, modifier le bouton Valider :
+<Button 
+  variant="ghost" 
+  size="icon" 
+  onClick={saveEditing}
+  disabled={
+    updateProductPriceMutation.isPending || 
+    (editForm.prixHt > 0 && (!editForm.fournisseurId || !editForm.regimeFiscal))  // ← AJOUTER
+  }
+  className="text-green-600 hover:text-green-700"
+  title={
+    editForm.prixHt > 0 && (!editForm.fournisseurId || !editForm.regimeFiscal)
+      ? "Fournisseur et régime fiscal requis"
+      : "Valider les modifications"
+  }
+>
+  <CheckCircle className="h-4 w-4" />
+</Button>
+7. Réinitialiser erreurs lors annulation
+Dans la fonction cancelEditing() :
+const cancelEditing = () => {
+  setEditingRow(null);
+  setValidationErrors({});  // ← AJOUTER
+};
+SCÉNARIOS DE VALIDATION
+✅ SCÉNARIO VALIDE 1 : Modifier uniquement le nom
+editForm = {
+  nom: "Nouveau nom",
+  prixHt: 0,  // Pas de prix
+  fournisseurId: null,
+  regimeFiscal: "tva_18"
+}
+→ Validation OK (pas besoin fournisseur si pas de prix)
+✅ SCÉNARIO VALIDE 2 : Ajouter prix complet
+editForm = {
+  nom: "Produit X",
+  prixHt: 15000,
+  fournisseurId: 3,
+  regimeFiscal: "tva_18"
+}
+→ Validation OK (prix + fournisseur + régime)
+❌ SCÉNARIO INVALIDE 1 : Prix sans fournisseur
+editForm = {
+  nom: "Produit Y",
+  prixHt: 5000,  // Prix saisi
+  fournisseurId: null,  // ❌ Fournisseur manquant
+  regimeFiscal: "tva_18"
+}
+→ Validation ÉCHOUE
+→ Toast : "Si vous saisissez un prix, vous devez sélectionner un fournisseur..."
+→ Bordure rouge sur select Fournisseur
+❌ SCÉNARIO INVALIDE 2 : Prix sans régime (rare car valeur par défaut)
+editForm = {
+  nom: "Produit Z",
+  prixHt: 8000,
+  fournisseurId: 2,
+  regimeFiscal: ""  // ❌ Régime manquant (ne devrait pas arriver)
+}
+→ Validation ÉCHOUE
+MESSAGES D'ERREUR
+Toast en cas d'échec validation :
+Titre: "Validation échouée"
+Description: "Si vous saisissez un prix, vous devez sélectionner un fournisseur et un régime fiscal."
+Variant: destructive (rouge)
+Tooltip bouton Valider désactivé :
+"Fournisseur et régime fiscal requis"
+FEEDBACK VISUEL
+Champ valide (normal)
+<SelectTrigger className="h-8 text-sm border-gray-300">
+Champ en erreur
+<SelectTrigger className="h-8 text-sm border-red-500 ring-2 ring-red-200">
+  ← Bordure rouge + halo rouge léger
+Bouton Valider désactivé
+<Button disabled className="opacity-50 cursor-not-allowed">
+  ← Grisé si validation impossible
+COMPORTEMENT AVEC PRODUITS EXISTANTS
+Produit SANS prix (valeurs initiales)
+startEditing() → {
+  prixHt: 0,
+  fournisseurId: null,
+  regimeFiscal: "tva_18"  // Valeur par défaut
+}
+→ Peut sauvegarder sans fournisseur (pas de prix)
+Produit AVEC prix existant
+startEditing() → {
+  prixHt: 12000,
+  fournisseurId: 5,
+  regimeFiscal: "tva_18"
+}
+→ Déjà valide, peut modifier
+→ Si on efface fournisseur → erreur si prix toujours > 0
+TESTS À EFFECTUER
+ Saisir Prix HT 5000 sans fournisseur → Valider → Toast erreur + bordure rouge
+ Saisir Prix HT 5000 → Sélectionner fournisseur → Bordure rouge disparaît
+ Saisir Prix HT 5000 + fournisseur → Valider → Sauvegarde OK
+ Modifier uniquement nom produit (prix = 0) → Valider → Sauvegarde OK
+ Saisir Prix HT → Bouton Valider désactivé jusqu'à sélection fournisseur
+ Saisir Prix HT → Annuler → Erreurs réinitialisées
+ Produit avec prix existant → Retirer fournisseur → Erreur si prix > 0
+ Mettre Prix HT à 0 → Fournisseur redevient optionnel
+AMÉLIORATION OPTIONNELLE : Placeholder explicite
+Dans le select Fournisseur, améliorer le placeholder :
+<SelectValue placeholder={
+  editForm.prixHt > 0 
+    ? "⚠️ Fournisseur requis" 
+    : "Choisir..."
+} />
+Si prix > 0 et pas de fournisseur → placeholder rouge/attention
+POINTS D'ATTENTION
+⚠️ Le régime fiscal a TOUJOURS une valeur par défaut ("tva_18"), donc erreur régime rare
+⚠️ La validation se déclenche uniquement si prixHt > 0
+⚠️ Un produit peut exister sans prix (fournisseurId = null, prixHt = 0) → C'est OK
+⚠️ Réinitialiser validationErrors à chaque changement pertinent
+⚠️ Le bouton Valider désactivé améliore l'UX mais toast reste nécessaire (double sécurité)
+
+---
+
+## ✅ RÉSUMÉ
+
+**Règle simple :**
+Prix HT > 0 ? → Fournisseur + Régime fiscal OBLIGATOIRES
+Prix HT = 0 ? → Fournisseur optionnel (produit sans prix)
+
+**Feedback utilisateur :**
+- Bordure rouge sur champs manquants
+- Toast explicite si tentative sauvegarde invalide
+- Bouton Valider désactivé si données incomplètes
+- Tooltip informatif sur bouton

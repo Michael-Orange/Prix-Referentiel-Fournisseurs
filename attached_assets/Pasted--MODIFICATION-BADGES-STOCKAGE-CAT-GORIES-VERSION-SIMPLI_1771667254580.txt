@@ -1,0 +1,131 @@
+ MODIFICATION : BADGES STOCKAGE CATÉGORIES (VERSION SIMPLIFIÉE)
+
+## UI FINALE DEMANDÉE
+
+Badge VERT si stockable :
+┌─────────────────────────────────────────┐
+│ EPI                                → 8  │
+│ Catégorie #2                            │
+│                                         │
+│ ✓ Stockage                              │  ← Badge VERT cliquable
+└─────────────────────────────────────────┘
+
+Badge ROUGE si non stockable :
+┌─────────────────────────────────────────┐
+│ Granulats                          → 12 │
+│ Catégorie #4                            │
+│                                         │
+│ ✗ Non stockage                          │  ← Badge ROUGE cliquable
+└─────────────────────────────────────────┘
+
+## CODE À UTILISER DANS categories.tsx
+
+Dans le JSX des cartes de catégories, REMPLACER le bloc badge par :
+
+```typescript
+<Card 
+  key={cat.id} 
+  className="hover:shadow-md transition-shadow cursor-pointer group"
+  onClick={() => navigate(`/?categorie=${encodeURIComponent(cat.nom)}`)}
+>
+  <CardContent className="p-6">
+    <div className="flex justify-between items-start mb-2">
+      <div className="flex-1">
+        <h3 className="text-lg font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
+          {cat.nom}
+        </h3>
+        <p className="text-sm text-gray-500">Catégorie #{cat.ordre}</p>
+        
+        {/* BADGE STOCKAGE */}
+        <div className="mt-2">
+          <Badge
+            variant={cat.estStockable ? "default" : "destructive"}
+            className={`cursor-pointer select-none ${
+              cat.estStockable 
+                ? "bg-green-600 text-white hover:bg-green-700" 
+                : "bg-red-600 text-white hover:bg-red-700"
+            }`}
+            onClick={(e) => {
+              e.stopPropagation();
+              const newValue = !cat.estStockable;
+              const message = newValue 
+                ? "Rendre cette catégorie stockable ? Les produits seront visibles dans l'app Stock." 
+                : "Marquer cette catégorie comme NON stockable ? Les produits ne seront plus visibles dans l'app Stock.";
+              
+              if (confirm(message)) {
+                toggleStockableMutation.mutate({ id: cat.id, estStockable: newValue });
+              }
+            }}
+          >
+            {cat.estStockable ? "✓ Stockage" : "✗ Non stockage"}
+          </Badge>
+        </div>
+      </div>
+      
+      <div className="flex items-center gap-2">
+        <Badge variant="outline" className="text-lg font-semibold">
+          {cat.count}
+        </Badge>
+        {/* ... reste du code ... */}
+      </div>
+    </div>
+  </CardContent>
+</Card>
+COULEURS FINALES
+Badge VERT (Stockable)
+Fond : bg-green-600
+Texte : text-white
+Hover : hover:bg-green-700
+Icône : ✓
+Texte : "Stockage"
+Badge ROUGE (Non stockable)
+Fond : bg-red-600
+Texte : text-white
+Hover : hover:bg-red-700
+Icône : ✗
+Texte : "Non stockage"
+MESSAGES DE CONFIRMATION
+Passage de Rouge → Vert (activer stockage)
+"Rendre cette catégorie stockable ? Les produits seront visibles dans l'app Stock."
+Passage de Vert → Rouge (désactiver stockage)
+"Marquer cette catégorie comme NON stockable ? Les produits ne seront plus visibles dans l'app Stock."
+TESTS ADDITIONNELS
+ Badge vert "✓ Stockage" affiché par défaut sur catégories
+ Clic sur badge vert → confirmation → devient rouge "✗ Non stockage"
+ Badge rouge bien visible (fond rouge, texte blanc)
+ Clic sur badge rouge → confirmation → redevient vert "✓ Stockage"
+ Hover sur badge → fond s'assombrit légèrement
+ Pas de confusion : vert = bon/actif, rouge = attention/inactif
+VARIANTES ICÔNES (SI BESOIN)
+Si les symboles ✓ et ✗ ne s'affichent pas bien, utiliser :
+Stockable (vert) :
+"📦 Stockage"
+"✓ Stockage"
+"Stockage" (sans icône)
+Non stockable (rouge) :
+"⊘ Non stockage"
+"✗ Non stockage"
+"Non stockage" (sans icône)
+Ma recommandation : ✓ et ✗ sont clairs et universels
+
+---
+
+## ✅ RÉSULTAT VISUEL
+
+**Catégorie stockable :**
+┌────────────────────┐
+│ EPI           → 8  │
+│ Catégorie #2       │
+│                    │
+│ [✓ Stockage]       │ ← VERT
+└────────────────────┘
+
+**Catégorie NON stockable :**
+┌────────────────────┐
+│ Granulats    → 12  │
+│ Catégorie #4       │
+│                    │
+│ [✗ Non stockage]   │ ← ROUGE
+└────────────────────┘
+
+**Plus simple, plus clair, plus visuel !
