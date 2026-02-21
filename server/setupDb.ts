@@ -18,6 +18,7 @@ export async function setupDatabase() {
         date_creation TIMESTAMP NOT NULL DEFAULT NOW()
       );
     `);
+    await client.query(`ALTER TABLE referentiel.categories ADD COLUMN IF NOT EXISTS est_stockable BOOLEAN NOT NULL DEFAULT true;`);
     console.log("✅ Schemas referentiel et prix créés, table users, pg_trgm activé");
   } finally {
     client.release();

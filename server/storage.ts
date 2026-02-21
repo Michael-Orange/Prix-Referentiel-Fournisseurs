@@ -34,7 +34,8 @@ export interface IStorage {
   desactiverFournisseur(id: number): Promise<Fournisseur | undefined>;
   reactiverFournisseur(id: number): Promise<Fournisseur | undefined>;
 
-  getCategories(): Promise<Categorie[]>;
+  getCategories(): Promise<(Categorie & { count: number })[]>;
+  toggleCategorieStockable(id: number, estStockable: boolean): Promise<Categorie | undefined>;
   getUnites(): Promise<Unite[]>;
 
   getProduits(filters?: { categorie?: string; stockable?: boolean; actif?: boolean; includeInactifs?: boolean; avecPrix?: boolean }): Promise<ProduitWithPrixDefaut[]>;
@@ -129,8 +130,37 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async getCategories(): Promise<Categorie[]> {
-    return db.select().from(categories).orderBy(asc(categories.ordreAffichage));
+  async getCategories(): Promise<(Categorie & { count: number })[]> {
+    const catRows = await db.select().from(categories).orderBy(asc(categories.ordreAffichage));
+    const countRows = await db
+      .select({
+        categorie: produitsMaster.categorie,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(produitsMaster)
+      .where(eq(produitsMaster.actif, true))
+      .groupBy(produitsMaster.categorie);
+
+    const countMap = new Map(countRows.map(r => [r.categorie, r.count]));
+    return catRows.map(c => ({ ...c, count: countMap.get(c.nom) || 0 }));
+  }
+
+  async toggleCategorieStockable(id: number, estStockable: boolean): Promise<Categorie | undefined> {
+    const [result] = await db
+      .update(categories)
+      .set({ estStockable })
+      .where(eq(categories.id, id))
+      .returning();
+    if (!result) return undefined;
+
+    if (!estStockable) {
+      await db
+        .update(produitsMaster)
+        .set({ estStockable: false })
+        .where(eq(produitsMaster.categorie, result.nom));
+    }
+
+    return result;
   }
 
   async getUnites(): Promise<Unite[]> {

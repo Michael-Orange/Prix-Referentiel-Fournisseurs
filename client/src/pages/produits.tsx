@@ -113,6 +113,11 @@ export default function Produits() {
     regimeFiscal: "tva_18",
   });
 
+  const [validationErrors, setValidationErrors] = useState<{
+    fournisseur?: boolean;
+    regimeFiscal?: boolean;
+  }>({});
+
   const [productForm, setProductForm] = useState({
     nom: "",
     categorie: "",
@@ -420,9 +425,33 @@ export default function Produits() {
 
   const cancelEditing = () => {
     setEditingRow(null);
+    setValidationErrors({});
+  };
+
+  const validateEditForm = (): boolean => {
+    const errors: typeof validationErrors = {};
+    if (editForm.prixHt && editForm.prixHt > 0) {
+      if (!editForm.fournisseurId) {
+        errors.fournisseur = true;
+      }
+      if (!editForm.regimeFiscal) {
+        errors.regimeFiscal = true;
+      }
+    }
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
   };
 
   const saveEditing = () => {
+    if (!validateEditForm()) {
+      toast({
+        title: "Validation échouée",
+        description: "Si vous saisissez un prix, vous devez sélectionner un fournisseur et un régime fiscal.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const changes: any = { produitId: editForm.produitId };
     const originalProduct = sortedProduits.find(p => p.id === editForm.produitId);
     if (!originalProduct) return;
@@ -433,7 +462,7 @@ export default function Produits() {
     if (editForm.estStockable !== originalProduct.estStockable) {
       changes.estStockable = editForm.estStockable;
     }
-    if (editForm.fournisseurId && editForm.prixHt > 0) {
+    if (editForm.prixHt > 0 && editForm.fournisseurId && editForm.regimeFiscal) {
       const origFourn = originalProduct.fournisseurDefaut?.id;
       const origPrix = originalProduct.fournisseurDefaut?.prixHt;
       const origRegime = originalProduct.fournisseurDefaut?.regimeFiscal;
@@ -450,6 +479,7 @@ export default function Produits() {
 
     if (Object.keys(changes).length === 1) {
       setEditingRow(null);
+      setValidationErrors({});
       return;
     }
 
@@ -496,7 +526,16 @@ export default function Produits() {
       header: "Stockage",
       render: (p: ProduitWithPrixDefaut) => {
         const isEditing = editingRow === p.id;
+        const catInfo = categoriesList.find(c => c.nom === p.categorie);
+        const categorieNonStockable = catInfo && !catInfo.estStockable;
         if (isEditing) {
+          if (categorieNonStockable) {
+            return (
+              <Badge variant="secondary" className="bg-gray-100 text-gray-500 cursor-not-allowed" title="Catégorie non stockable">
+                Non (catégorie)
+              </Badge>
+            );
+          }
           return (
             <Select
               value={editForm.estStockable ? "oui" : "non"}
@@ -548,10 +587,13 @@ export default function Produits() {
           return (
             <Select
               value={editForm.fournisseurId?.toString() || ""}
-              onValueChange={(v) => setEditForm({ ...editForm, fournisseurId: parseInt(v) })}
+              onValueChange={(v) => {
+                setEditForm({ ...editForm, fournisseurId: parseInt(v) });
+                setValidationErrors({ ...validationErrors, fournisseur: false });
+              }}
             >
-              <SelectTrigger className="h-8 text-sm" onClick={(e) => e.stopPropagation()} data-testid={`select-edit-fournisseur-${p.id}`}>
-                <SelectValue placeholder="Choisir..." />
+              <SelectTrigger className={`h-8 text-sm ${validationErrors.fournisseur ? 'border-red-500 ring-2 ring-red-200' : ''}`} onClick={(e) => e.stopPropagation()} data-testid={`select-edit-fournisseur-${p.id}`}>
+                <SelectValue placeholder={editForm.prixHt > 0 ? "⚠️ Fournisseur requis" : "Choisir..."} />
               </SelectTrigger>
               <SelectContent>
                 {fournisseurs.map((f: any) => (
@@ -587,7 +629,10 @@ export default function Produits() {
               type="number"
               min="0"
               value={editForm.prixHt || ""}
-              onChange={(e) => setEditForm({ ...editForm, prixHt: parseFloat(e.target.value) || 0 })}
+              onChange={(e) => {
+                setEditForm({ ...editForm, prixHt: parseFloat(e.target.value) || 0 });
+                setValidationErrors({});
+              }}
               onClick={(e) => e.stopPropagation()}
               className="h-8 text-sm text-right"
               data-testid={`input-edit-prix-${p.id}`}
@@ -611,9 +656,12 @@ export default function Produits() {
           return (
             <Select
               value={editForm.regimeFiscal}
-              onValueChange={(v) => setEditForm({ ...editForm, regimeFiscal: v })}
+              onValueChange={(v) => {
+                setEditForm({ ...editForm, regimeFiscal: v });
+                setValidationErrors({ ...validationErrors, regimeFiscal: false });
+              }}
             >
-              <SelectTrigger className="h-8 text-sm" onClick={(e) => e.stopPropagation()} data-testid={`select-edit-regime-${p.id}`}>
+              <SelectTrigger className={`h-8 text-sm ${validationErrors.regimeFiscal ? 'border-red-500 ring-2 ring-red-200' : ''}`} onClick={(e) => e.stopPropagation()} data-testid={`select-edit-regime-${p.id}`}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -675,8 +723,16 @@ export default function Produits() {
                 variant="ghost"
                 size="icon"
                 onClick={saveEditing}
-                disabled={updateProductPriceMutation.isPending}
+                disabled={
+                  updateProductPriceMutation.isPending ||
+                  (editForm.prixHt > 0 && (!editForm.fournisseurId || !editForm.regimeFiscal))
+                }
                 className="text-green-600 hover:text-green-700"
+                title={
+                  editForm.prixHt > 0 && (!editForm.fournisseurId || !editForm.regimeFiscal)
+                    ? "Fournisseur et régime fiscal requis"
+                    : "Valider les modifications"
+                }
                 data-testid={`button-save-${p.id}`}
               >
                 <CheckCircle className="h-4 w-4" />

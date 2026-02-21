@@ -10,6 +10,7 @@ export const categories = referentielSchema.table("categories", {
   id: serial("id").primaryKey(),
   nom: text("nom").notNull().unique(),
   ordreAffichage: integer("ordre_affichage").notNull().default(0),
+  estStockable: boolean("est_stockable").notNull().default(true),
 });
 
 export const insertCategorieSchema = createInsertSchema(categories).omit({ id: true });

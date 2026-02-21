@@ -240,6 +240,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  app.patch("/api/referentiel/categories/:id/stockable", authOrScope("referentiel:write"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { est_stockable } = req.body;
+      if (typeof est_stockable !== "boolean") {
+        return res.status(400).json({ error: "est_stockable (boolean) requis" });
+      }
+      const result = await storage.toggleCategorieStockable(id, est_stockable);
+      if (!result) return res.status(404).json({ error: "Catégorie non trouvée" });
+      res.json({ categorie: result });
+    } catch (error) {
+      console.error("Error:", error);
+      res.status(500).json({ error: "Erreur serveur" });
+    }
+  });
+
   app.get("/api/referentiel/unites", authOrScope("referentiel:read"), async (_req, res) => {
     try {
       res.json({ unites: await storage.getUnites() });
