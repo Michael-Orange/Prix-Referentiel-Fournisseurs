@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useSearch } from "wouter";
 import { PageHeader } from "@/components/page-header";
@@ -78,12 +78,13 @@ export default function Produits() {
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
   const categorieFromUrl = urlParams.get("categorie");
+  const sousSectionFromUrl = urlParams.get("sousSection");
 
   const [search, setSearch] = useState("");
   const [filterCategorie, setFilterCategorie] = useState<string>(categorieFromUrl || "all");
   const [filterPrix, setFilterPrix] = useState<string>("all");
   const [filterStockable, setFilterStockable] = useState<string>("all");
-  const [filterSousSection, setFilterSousSection] = useState<string>("all");
+  const [filterSousSection, setFilterSousSection] = useState<string>(sousSectionFromUrl || "all");
   const [includeInactifs, setIncludeInactifs] = useState(false);
 
   const [isProductDialogOpen, setIsProductDialogOpen] = useState(false);
@@ -171,7 +172,12 @@ export default function Produits() {
     return sousSectionsData.filter((ss) => ss.categorie === filterCategorie);
   }, [filterCategorie, sousSectionsData]);
 
+  const isInitialMount = useRef(true);
   useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
     setFilterSousSection("all");
   }, [filterCategorie]);
 

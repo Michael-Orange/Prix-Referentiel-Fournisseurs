@@ -156,7 +156,16 @@ export default function Categories() {
                       {catSousSections.length > 0 && (
                         <div className="mt-2 flex flex-wrap gap-1">
                           {catSousSections.map(ss => (
-                            <Badge key={ss.id} variant="outline" className="text-xs" data-testid={`badge-ss-${ss.id}`}>
+                            <Badge
+                              key={ss.id}
+                              variant="outline"
+                              className="text-xs cursor-pointer hover:bg-primary/10 hover:border-primary transition-colors"
+                              data-testid={`badge-ss-${ss.id}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate(`/produits?categorie=${encodeURIComponent(category.nom)}&sousSection=${encodeURIComponent(ss.nom)}`);
+                              }}
+                            >
                               {ss.nom}
                             </Badge>
                           ))}
