@@ -61,6 +61,7 @@ import type {
   Fournisseur,
   PrixFournisseur,
   HistoriquePrix,
+  SousSectionWithCategorie,
   REGIMES_FISCAUX,
 } from "@shared/schema";
 import { calculerPrix, normalizeProductName } from "@shared/schema";
@@ -101,6 +102,7 @@ export default function Produits() {
     produitId: number;
     nom: string;
     estStockable: boolean;
+    sousSection: string;
     fournisseurId: number | null;
     prixHt: number;
     regimeFiscal: string;
@@ -108,6 +110,7 @@ export default function Produits() {
     produitId: 0,
     nom: "",
     estStockable: false,
+    sousSection: "",
     fournisseurId: null,
     prixHt: 0,
     regimeFiscal: "tva_18",
@@ -153,6 +156,14 @@ export default function Produits() {
   const { data: fournisseurs = [] } = useQuery<FournisseurWithStats[]>({
     queryKey: ["/api/fournisseurs"],
   });
+
+  const { data: sousSectionsData = [] } = useQuery<SousSectionWithCategorie[]>({
+    queryKey: ["/api/referentiel/sous-sections"],
+  });
+
+  const getSousSectionsForCategorie = (categorieNom: string) => {
+    return sousSectionsData.filter((ss) => ss.categorie === categorieNom);
+  };
 
   const { data: detailData, isLoading: isLoadingDetail } = useQuery<{ produit: ProduitDetail }>({
     queryKey: ["/api/referentiel/produits", selectedProductId],
@@ -271,14 +282,16 @@ export default function Produits() {
       produitId: number;
       produitNom?: string;
       estStockable?: boolean;
+      sousSection?: string;
       fournisseurId?: number;
       prixHt?: number;
       regimeFiscal?: string;
     }) => {
-      if (data.produitNom !== undefined || data.estStockable !== undefined) {
+      if (data.produitNom !== undefined || data.estStockable !== undefined || data.sousSection !== undefined) {
         const updateData: any = {};
         if (data.produitNom !== undefined) updateData.nom = data.produitNom;
         if (data.estStockable !== undefined) updateData.estStockable = data.estStockable;
+        if (data.sousSection !== undefined) updateData.sousSection = data.sousSection;
         await apiRequest("PATCH", `/api/referentiel/produits/${data.produitId}`, updateData);
       }
       if (data.fournisseurId && data.prixHt && data.regimeFiscal) {
@@ -399,6 +412,7 @@ export default function Produits() {
       produitId: produit.id,
       nom: produit.nom,
       estStockable: produit.estStockable,
+      sousSection: produit.sousSection || "",
       fournisseurId: produit.fournisseurDefaut?.id || null,
       prixHt: produit.fournisseurDefaut?.prixHt || 0,
       regimeFiscal: produit.fournisseurDefaut?.regimeFiscal || "tva_18",
@@ -461,6 +475,9 @@ export default function Produits() {
     }
     if (editForm.estStockable !== originalProduct.estStockable) {
       changes.estStockable = editForm.estStockable;
+    }
+    if (editForm.sousSection !== (originalProduct.sousSection || "")) {
+      changes.sousSection = editForm.sousSection;
     }
     if (editForm.prixHt > 0 && editForm.fournisseurId && editForm.regimeFiscal) {
       const origFourn = originalProduct.fournisseurDefaut?.id;
@@ -572,6 +589,44 @@ export default function Produits() {
       render: (p: ProduitWithPrixDefaut) => (
         <span className="text-sm text-muted-foreground">{p.categorie}</span>
       ),
+    },
+    {
+      key: "sousSection",
+      header: "Sous-section",
+      render: (p: ProduitWithPrixDefaut) => {
+        const isEditing = editingRow === p.id;
+        if (isEditing) {
+          const ssSections = getSousSectionsForCategorie(p.categorie);
+          return (
+            <Select
+              value={editForm.sousSection || "Tous"}
+              onValueChange={(v) => setEditForm({
+                ...editForm,
+                sousSection: v === "Tous" ? "" : v,
+              })}
+            >
+              <SelectTrigger
+                className="h-8 text-sm w-[150px]"
+                onClick={(e) => e.stopPropagation()}
+                data-testid={`select-edit-ss-${p.id}`}
+              >
+                <SelectValue placeholder="Tous" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Tous">Tous</SelectItem>
+                {ssSections.map((ss) => (
+                  <SelectItem key={ss.id} value={ss.nom}>{ss.nom}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          );
+        }
+        return (
+          <span className="text-sm text-muted-foreground">
+            {p.sousSection || "Tous"}
+          </span>
+        );
+      },
     },
     {
       key: "unite",
@@ -935,7 +990,7 @@ export default function Produits() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="prod-cat">Catégorie *</Label>
-                <Select value={productForm.categorie} onValueChange={(v) => setProductForm({ ...productForm, categorie: v })}>
+                <Select value={productForm.categorie} onValueChange={(v) => setProductForm({ ...productForm, categorie: v, sousSection: "" })}>
                   <SelectTrigger data-testid="select-product-categorie">
                     <SelectValue placeholder="Choisir..." />
                   </SelectTrigger>
@@ -977,13 +1032,29 @@ export default function Produits() {
 
             <div className="space-y-2">
               <Label htmlFor="prod-ss">Sous-section (optionnel)</Label>
-              <Input
-                id="prod-ss"
-                value={productForm.sousSection}
-                onChange={(e) => setProductForm({ ...productForm, sousSection: e.target.value })}
-                placeholder="Ex: Tubes PVC"
-                data-testid="input-product-soussection"
-              />
+              <Select
+                value={productForm.sousSection || "Tous"}
+                onValueChange={(v) => setProductForm({ ...productForm, sousSection: v === "Tous" ? "" : v })}
+                disabled={!productForm.categorie}
+              >
+                <SelectTrigger data-testid="select-product-soussection">
+                  <SelectValue placeholder="Choisir une sous-section..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Tous">Tous (pas de sous-section)</SelectItem>
+                  {getSousSectionsForCategorie(productForm.categorie).map((ss) => (
+                    <SelectItem key={ss.id} value={ss.nom}>{ss.nom}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground mt-1">
+                {!productForm.categorie
+                  ? "Sélectionnez d'abord une catégorie"
+                  : getSousSectionsForCategorie(productForm.categorie).length === 0
+                    ? "Aucune sous-section pour cette catégorie"
+                    : "Choisissez une sous-section ou 'Tous'"
+                }
+              </p>
             </div>
 
             <DialogFooter>

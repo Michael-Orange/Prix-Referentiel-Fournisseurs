@@ -19,7 +19,24 @@ export async function setupDatabase() {
       );
     `);
     await client.query(`ALTER TABLE referentiel.categories ADD COLUMN IF NOT EXISTS est_stockable BOOLEAN NOT NULL DEFAULT true;`);
-    console.log("✅ Schemas referentiel et prix créés, table users, pg_trgm activé");
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS referentiel.sous_sections (
+        id SERIAL PRIMARY KEY,
+        nom TEXT NOT NULL,
+        categorie_id INTEGER NOT NULL REFERENCES referentiel.categories(id)
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_sous_sections_categorie ON referentiel.sous_sections(categorie_id);`);
+    await client.query(`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'uq_sous_section_categorie_nom'
+        ) THEN
+          ALTER TABLE referentiel.sous_sections ADD CONSTRAINT uq_sous_section_categorie_nom UNIQUE (categorie_id, nom);
+        END IF;
+      END $$;
+    `);
+    console.log("✅ Schemas referentiel et prix créés, table users, sous_sections, pg_trgm activé");
   } finally {
     client.release();
   }

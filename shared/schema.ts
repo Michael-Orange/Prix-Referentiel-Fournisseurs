@@ -17,6 +17,20 @@ export const insertCategorieSchema = createInsertSchema(categories).omit({ id: t
 export type InsertCategorie = z.infer<typeof insertCategorieSchema>;
 export type Categorie = typeof categories.$inferSelect;
 
+export const sousSections = referentielSchema.table("sous_sections", {
+  id: serial("id").primaryKey(),
+  nom: text("nom").notNull(),
+  categorieId: integer("categorie_id").notNull().references(() => categories.id),
+}, (table) => [
+  index("idx_sous_sections_categorie").on(table.categorieId),
+]);
+
+export const insertSousSectionSchema = createInsertSchema(sousSections).omit({ id: true });
+export type InsertSousSection = z.infer<typeof insertSousSectionSchema>;
+export type SousSection = typeof sousSections.$inferSelect;
+
+export type SousSectionWithCategorie = SousSection & { categorie: string };
+
 export const unites = referentielSchema.table("unites", {
   id: serial("id").primaryKey(),
   code: text("code").notNull().unique(),

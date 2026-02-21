@@ -3,6 +3,7 @@ import { eq, desc, and, sql, asc, count } from "drizzle-orm";
 import {
   fournisseurs,
   categories,
+  sousSections,
   unites,
   produitsMaster,
   prixFournisseurs,
@@ -14,6 +15,10 @@ import {
   type Fournisseur,
   type InsertFournisseur,
   type Categorie,
+  type InsertCategorie,
+  type SousSection,
+  type InsertSousSection,
+  type SousSectionWithCategorie,
   type Unite,
   type ProduitMaster,
   type InsertProduitMaster,
@@ -35,7 +40,10 @@ export interface IStorage {
   reactiverFournisseur(id: number): Promise<Fournisseur | undefined>;
 
   getCategories(): Promise<(Categorie & { count: number })[]>;
+  createCategorie(data: InsertCategorie): Promise<Categorie>;
   toggleCategorieStockable(id: number, estStockable: boolean): Promise<Categorie | undefined>;
+  getSousSections(): Promise<SousSectionWithCategorie[]>;
+  createSousSection(data: InsertSousSection): Promise<SousSection>;
   getUnites(): Promise<Unite[]>;
 
   getProduits(filters?: { categorie?: string; stockable?: boolean; actif?: boolean; includeInactifs?: boolean; avecPrix?: boolean }): Promise<ProduitWithPrixDefaut[]>;
@@ -145,6 +153,11 @@ export class DatabaseStorage implements IStorage {
     return catRows.map(c => ({ ...c, count: countMap.get(c.nom) || 0 }));
   }
 
+  async createCategorie(data: InsertCategorie): Promise<Categorie> {
+    const [result] = await db.insert(categories).values(data).returning();
+    return result;
+  }
+
   async toggleCategorieStockable(id: number, estStockable: boolean): Promise<Categorie | undefined> {
     const [result] = await db
       .update(categories)
@@ -160,6 +173,25 @@ export class DatabaseStorage implements IStorage {
         .where(eq(produitsMaster.categorie, result.nom));
     }
 
+    return result;
+  }
+
+  async getSousSections(): Promise<SousSectionWithCategorie[]> {
+    const rows = await db
+      .select({
+        id: sousSections.id,
+        nom: sousSections.nom,
+        categorieId: sousSections.categorieId,
+        categorie: categories.nom,
+      })
+      .from(sousSections)
+      .leftJoin(categories, eq(sousSections.categorieId, categories.id))
+      .orderBy(asc(categories.nom), asc(sousSections.nom));
+    return rows.map(r => ({ ...r, categorie: r.categorie || "" }));
+  }
+
+  async createSousSection(data: InsertSousSection): Promise<SousSection> {
+    const [result] = await db.insert(sousSections).values(data).returning();
     return result;
   }
 

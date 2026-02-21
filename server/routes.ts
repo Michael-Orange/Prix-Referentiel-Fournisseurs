@@ -240,6 +240,70 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  app.post("/api/referentiel/categories", authOrScope("referentiel:write"), async (req, res) => {
+    try {
+      const { nom } = req.body;
+      if (!nom || nom.trim() === "") {
+        return res.status(400).json({ error: "Nom de catégorie requis" });
+      }
+      const existing = (await storage.getCategories()).find(c => c.nom === nom.trim());
+      if (existing) {
+        return res.status(400).json({ error: "Cette catégorie existe déjà" });
+      }
+      const allCats = await storage.getCategories();
+      const maxOrdre = allCats.reduce((max, c) => Math.max(max, c.ordreAffichage), 0);
+      const categorie = await storage.createCategorie({
+        nom: nom.trim(),
+        ordreAffichage: maxOrdre + 1,
+        estStockable: true,
+      });
+      res.status(201).json(categorie);
+    } catch (error: any) {
+      console.error("Erreur création catégorie:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/referentiel/sous-sections", authOrScope("referentiel:read"), async (_req, res) => {
+    try {
+      const rows = await storage.getSousSections();
+      res.json(rows);
+    } catch (error: any) {
+      console.error("Erreur récupération sous-sections:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/referentiel/sous-sections", authOrScope("referentiel:write"), async (req, res) => {
+    try {
+      const { nom, categorie_id } = req.body;
+      if (!nom || nom.trim() === "") {
+        return res.status(400).json({ error: "Nom de sous-section requis" });
+      }
+      if (!categorie_id) {
+        return res.status(400).json({ error: "categorie_id requis" });
+      }
+      const cats = await storage.getCategories();
+      const cat = cats.find(c => c.id === categorie_id);
+      if (!cat) {
+        return res.status(404).json({ error: "Catégorie introuvable" });
+      }
+      const existingSS = await storage.getSousSections();
+      const duplicate = existingSS.find(ss => ss.nom === nom.trim() && ss.categorieId === categorie_id);
+      if (duplicate) {
+        return res.status(400).json({ error: "Cette sous-section existe déjà pour cette catégorie" });
+      }
+      const sousSection = await storage.createSousSection({
+        nom: nom.trim(),
+        categorieId: categorie_id,
+      });
+      res.status(201).json(sousSection);
+    } catch (error: any) {
+      console.error("Erreur création sous-section:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.patch("/api/referentiel/categories/:id/stockable", authOrScope("referentiel:write"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
@@ -322,7 +386,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/referentiel/produits/:id", authOrScope("referentiel:write"), async (req, res) => {
     try {
-      const produit = await storage.updateProduit(parseInt(req.params.id), req.body);
+      const updateData: any = {};
+      if (req.body.nom !== undefined) updateData.nom = req.body.nom;
+      if (req.body.estStockable !== undefined) updateData.estStockable = req.body.estStockable;
+      if (req.body.est_stockable !== undefined) updateData.estStockable = req.body.est_stockable;
+      if (req.body.sousSection !== undefined) updateData.sousSection = req.body.sousSection === "" ? null : req.body.sousSection;
+      if (req.body.sous_section !== undefined) updateData.sousSection = req.body.sous_section === "" ? null : req.body.sous_section;
+      const produit = await storage.updateProduit(parseInt(req.params.id), updateData);
       if (!produit) return res.status(404).json({ error: "Produit non trouvé" });
       res.json(produit);
     } catch (error) {

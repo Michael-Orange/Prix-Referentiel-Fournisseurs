@@ -34,9 +34,10 @@ Preferred communication style: Simple, everyday language.
 ### Key Data Models (Multi-Schema)
 
 #### Schema `referentiel` (shared product data)
-1. **categories**: Product categories with ordering
-2. **unites**: Units of measure (code, libelle, type)
-3. **produits_master**: Master product catalog (nom, nomNormalise, categorie, unite, estStockable, sourceApp)
+1. **categories**: Product categories with ordering, estStockable
+2. **sous_sections**: Sub-sections within categories (nom, categorieId FK, unique per category)
+3. **unites**: Units of measure (code, libelle, type)
+4. **produits_master**: Master product catalog (nom, nomNormalise, categorie, unite, sousSection, estStockable, sourceApp)
 
 #### Schema `prix` (supplier pricing)
 4. **fournisseurs**: Suppliers with fiscal regime (statutTva: tva_18, sans_tva, brs_5)
@@ -79,7 +80,8 @@ Preferred communication style: Simple, everyday language.
 
 ### API Endpoints
 - `GET/POST /api/fournisseurs` - CRUD suppliers
-- `GET /api/referentiel/categories` - List categories
+- `GET/POST /api/referentiel/categories` - List/create categories
+- `GET/POST /api/referentiel/sous-sections` - List/create sous-sections
 - `GET /api/referentiel/produits` - List products (filters: categorie, stockable, actif, avec_prix)
 - `GET /api/referentiel/produits/search?q=...` - Trigram duplicate search
 - `POST /api/prix/produits/:id/fournisseurs` - Add supplier price
@@ -115,6 +117,13 @@ BRS 5%:   prixTtc = null, prixBrs = prixHt / 0.95
 - **zod** + **drizzle-zod**: Runtime schema validation
 
 ## Recent Changes (2026-02-21)
+- Sous-sections (sub-sections): hierarchical product categorization within categories
+  - New sous_sections table with unique constraint (categorie_id, nom), FK to categories
+  - Categories page: "Ajouter une catégorie" dialog, sous-section badges, add sous-section button per card
+  - Products creation form: sous-section Select dropdown filtered by selected category, resets on category change
+  - Products table: editable "Sous-section" column between Catégorie and Unité with inline Select
+  - PATCH produit supports sousSection/sous_section field update
+  - GET/POST /api/referentiel/sous-sections and POST /api/referentiel/categories endpoints
 - Category-level stockage control: estStockable column on categories, PATCH toggle endpoint with cascade to products
 - Categories page: clickable green/red stockage badges, product count display, confirmation dialogs for toggle
 - Inline edit validation: price requires fournisseur + régime fiscal, red borders + toast feedback, disabled save button with tooltip
