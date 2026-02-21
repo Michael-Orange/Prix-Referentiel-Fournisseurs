@@ -1,0 +1,385 @@
+# BRIEF : Normalisation Automatique des Noms de Produits
+
+## 🎯 OBJECTIF
+
+Transformer automatiquement tous les noms de produits en "Title Case" (Première Lettre De Chaque Mot En Majuscule) pour garantir la cohérence des données dans le référentiel partagé.
+
+---
+
+## 📝 RÈGLE DE TRANSFORMATION
+
+**Format cible : Title Case**
+- Première lettre de chaque mot en MAJUSCULE
+- Reste des lettres en minuscule
+- Les chiffres et symboles sont préservés
+
+**Exemples :**
+
+| Actuellement en base         | Après normalisation           |
+|------------------------------|-------------------------------|
+| PAIRE GANTS                  | Paire Gants                   |
+| t-shirt                      | T-Shirt                       |
+| BOITE DE LIAISON ETANCHE     | Boite De Liaison Etanche      |
+| cable a05vvf 3 x 1.5mm       | Cable A05vvf 3 X 1.5mm        |
+| CABLE H05VVF 3×2,5mm         | Cable H05vvf 3×2,5mm          |
+| Coffret électrique PM        | Coffret Électrique Pm         |
+
+---
+
+## 🛠️ IMPLÉMENTATION
+
+### ÉTAPE 1 : Fonction de normalisation
+
+File: `server/utils/normalizeProductName.ts` (CRÉER)
+
+```typescript
+/**
+ * Transforme un nom de produit en Title Case
+ * Première lettre de chaque mot en majuscule, reste en minuscule
+ */
+export function normalizeProductName(name: string): string {
+  if (!name || typeof name !== 'string') return '';
+  
+  return name
+    .toLowerCase() // Tout en minuscule d'abord
+    .split(' ')    // Séparer par espaces
+    .map(word => {
+      if (word.length === 0) return word;
+      // Première lettre en majuscule + reste en minuscule
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(' ')     // Rejoindre avec espaces
+    .trim();       // Enlever espaces début/fin
+}
+ÉTAPE 2 : Script de migration (CRITIQUE)
+File: scripts/normalize-existing-products.ts (CRÉER)
+import { db } from "../server/db";
+import { produitsMaster } from "../shared/schema";
+import { eq } from "drizzle-orm";
+
+/**
+ * Normaliser un nom en Title Case
+ */
+function normalizeProductName(name: string): string {
+  if (!name || typeof name !== 'string') return '';
+  
+  return name
+    .toLowerCase()
+    .split(' ')
+    .map(word => word.length > 0 ? word.charAt(0).toUpperCase() + word.slice(1) : word)
+    .join(' ')
+    .trim();
+}
+
+/**
+ * Normaliser pour recherche (sans accents, minuscules)
+ */
+function normaliserNom(nom: string): string {
+  return nom
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, '')
+    .trim();
+}
+
+async function normalizeExistingProducts() {
+  console.log('🔄 Normalisation des noms de produits existants...\n');
+  
+  try {
+    // 1. Récupérer tous les produits actifs
+    const produits = await db
+      .select()
+      .from(produitsMaster);
+    
+    console.log(`📦 ${produits.length} produits à traiter\n`);
+    
+    let updated = 0;
+    let unchanged = 0;
+    let errors = 0;
+    
+    // 2. Pour chaque produit, normaliser le nom
+    for (const produit of produits) {
+      const nomActuel = produit.nom;
+      const nomNormalise = normalizeProductName(nomActuel);
+      
+      // Vérifier si le nom change
+      if (nomActuel !== nomNormalise) {
+        console.log(`✏️  "${nomActuel}" → "${nomNormalise}"`);
+        
+        try {
+          // Mettre à jour
+          await db
+            .update(produitsMaster)
+            .set({
+              nom: nomNormalise,
+              nomNormalise: normaliserNom(nomNormalise),
+              dateModification: new Date(),
+              modifiePar: 'Script normalisation',
+            })
+            .where(eq(produitsMaster.id, produit.id));
+          
+          updated++;
+        } catch (error: any) {
+          console.error(`❌ Erreur pour "${nomActuel}":`, error.message);
+          errors++;
+        }
+      } else {
+        unchanged++;
+      }
+    }
+    
+    console.log('\n✅ Migration terminée :');
+    console.log(`   - ${updated} produits normalisés`);
+    console.log(`   - ${unchanged} produits inchangés`);
+    if (errors > 0) {
+      console.log(`   - ${errors} erreurs`);
+    }
+    
+  } catch (error: any) {
+    console.error('❌ Erreur lors de la migration:', error);
+    throw error;
+  }
+}
+
+// Exécuter
+normalizeExistingProducts()
+  .then(() => {
+    console.log('\n✅ Script terminé avec succès');
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error('\n❌ Script échoué:', error);
+    process.exit(1);
+  });
+Exécution :
+npx tsx scripts/normalize-existing-products.ts
+Sortie attendue :
+🔄 Normalisation des noms de produits existants...
+
+📦 340 produits à traiter
+
+✏️  "PAIRE GANTS" → "Paire Gants"
+✏️  "t-shirt" → "T-Shirt"
+✏️  "BOITE DE LIAISON ETANCHE" → "Boite De Liaison Etanche"
+✏️  "cable a05vvf 3 x 1.5mm" → "Cable A05vvf 3 X 1.5mm"
+...
+
+✅ Migration terminée :
+   - 287 produits normalisés
+   - 53 produits inchangés
+   - 0 erreurs
+
+✅ Script terminé avec succès
+ÉTAPE 3 : Application automatique (nouvelles données)
+File: server/routes/referentiel.ts (MODIFIER routes existantes)
+Import de la fonction
+En haut du fichier, AJOUTER :
+import { normalizeProductName } from "../utils/normalizeProductName";
+Route POST /api/referentiel/produits
+MODIFIER pour normaliser avant insertion :
+app.post("/api/referentiel/produits", requireAuth, requireApp('prix'), async (req, res) => {
+  try {
+    const { nom, categorie, unite, ... } = req.body;
+    const userName = req.user.nom;
+    
+    // ← AJOUTER : Normaliser le nom AVANT insertion
+    const nomNormalise = normalizeProductName(nom);
+    const nomNormaliseSearch = normaliserNom(nomNormalise);
+    
+    // Vérifier doublons avec nom normalisé
+    const existant = await db
+      .select()
+      .from(produitsMaster)
+      .where(eq(produitsMaster.nom, nomNormalise))
+      .limit(1);
+    
+    if (existant.length > 0) {
+      return res.status(409).json({
+        error: 'Un produit avec ce nom existe déjà',
+        produitExistant: existant[0],
+      });
+    }
+    
+    // Insérer avec nom normalisé
+    const [produit] = await db
+      .insert(produitsMaster)
+      .values({
+        nom: nomNormalise,              // ← NOM NORMALISÉ
+        nomNormalise: nomNormaliseSearch,
+        categorie,
+        unite,
+        creePar: userName,
+        modifiePar: userName,
+        actif: true,
+      })
+      .returning();
+    
+    res.status(201).json(produit);
+  } catch (error: any) {
+    console.error("Erreur création produit:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+Route PATCH /api/referentiel/produits/:id
+MODIFIER pour normaliser si nom modifié :
+app.patch("/api/referentiel/produits/:id", requireAuth, requireApp('prix'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userName = req.user.nom;
+    const updateData: any = { 
+      modifiePar: userName,
+      dateModification: new Date(),
+    };
+    
+    // Si nom modifié, normaliser
+    if (req.body.nom !== undefined) {
+      updateData.nom = normalizeProductName(req.body.nom);           // ← NORMALISER
+      updateData.nomNormalise = normaliserNom(updateData.nom);
+    }
+    
+    // Copier autres champs modifiés
+    if (req.body.categorie !== undefined) updateData.categorie = req.body.categorie;
+    if (req.body.unite !== undefined) updateData.unite = req.body.unite;
+    // ... autres champs ...
+    
+    const [updated] = await db
+      .update(produitsMaster)
+      .set(updateData)
+      .where(eq(produitsMaster.id, parseInt(id)))
+      .returning();
+    
+    if (!updated) {
+      return res.status(404).json({ error: "Produit non trouvé" });
+    }
+    
+    res.json(updated);
+  } catch (error: any) {
+    console.error("Erreur modification produit:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+ÉTAPE 4 : Aperçu frontend (optionnel - améliore UX)
+File: client/src/components/ProductForm.tsx (ou ton formulaire produit)
+AJOUTER cette fonction et state :
+import { useState, useEffect } from "react";
+
+// Fonction helper frontend (même logique que backend)
+function normalizeProductName(name: string): string {
+  if (!name) return '';
+  return name
+    .toLowerCase()
+    .split(' ')
+    .map(word => word.length > 0 ? word.charAt(0).toUpperCase() + word.slice(1) : word)
+    .join(' ')
+    .trim();
+}
+
+export function ProductForm() {
+  const [nom, setNom] = useState('');
+  const [nomPreview, setNomPreview] = useState('');
+  
+  // Calculer aperçu normalisé
+  useEffect(() => {
+    if (nom) {
+      const normalized = normalizeProductName(nom);
+      setNomPreview(normalized);
+    } else {
+      setNomPreview('');
+    }
+  }, [nom]);
+  
+  return (
+    <div>
+      <Label htmlFor="nom">Nom du produit</Label>
+      <Input
+        id="nom"
+        value={nom}
+        onChange={(e) => setNom(e.target.value)}
+        placeholder="Ex: PAIRE GANTS"
+      />
+      
+      {/* Aperçu normalisation */}
+      {nomPreview && nomPreview !== nom && (
+        <p className="text-sm text-gray-500 mt-1">
+          Sera enregistré comme : 
+          <span className="font-medium text-teal-600 ml-1">
+            {nomPreview}
+          </span>
+        </p>
+      )}
+      
+      {/* Reste du formulaire */}
+    </div>
+  );
+}
+Résultat visuel :
+┌────────────────────────────────────────┐
+│ Nom du produit                         │
+│ ┌────────────────────────────────────┐ │
+│ │ PAIRE GANTS                        │ │
+│ └────────────────────────────────────┘ │
+│ Sera enregistré comme : Paire Gants    │
+└────────────────────────────────────────┘
+✅ CHECKLIST DE VALIDATION
+Backend
+ Fonction normalizeProductName() créée dans server/utils/
+ Script scripts/normalize-existing-products.ts créé
+ Script exécuté avec succès (voir logs des transformations)
+ Vérifier en DB : SELECT nom FROM referentiel.produits_master LIMIT 20
+ Route POST normalise avant insertion
+ Route PATCH normalise si nom modifié
+ Import ajouté dans server/routes/referentiel.ts
+Tests Manuels
+ Créer produit "PAIRE GANTS" → Enregistré "Paire Gants" ✅
+ Créer produit "t-shirt" → Enregistré "T-Shirt" ✅
+ Modifier nom "CABLE" → "cable neuf" → Enregistré "Cable Neuf" ✅
+ Essayer créer "Paire Gants" alors que "paire gants" existe → Doublon détecté ✅
+ Produit avec chiffres "CABLE 3 x 1.5mm" → "Cable 3 X 1.5mm" ✅
+ Produit avec accents "BOÎTE ÉLECTRIQUE" → "Boîte Électrique" ✅
+Frontend (optionnel)
+ Aperçu normalisation affiché en temps réel
+ Message "Sera enregistré comme : X" visible
+Base de données
+ Tous produits existants normalisés (vérifier manuellement quelques lignes)
+ Pas de doublons créés par la normalisation
+ Colonnes modifiePar et dateModification mises à jour
+📝 ORDRE D'EXÉCUTION RECOMMANDÉ
+✅ Créer fonction normalizeProductName() dans server/utils/
+✅ Créer script scripts/normalize-existing-products.ts
+✅ EXÉCUTER le script pour normaliser base existante (~340 produits)
+✅ Modifier routes POST/PATCH pour utiliser la fonction
+✅ Tester avec nouveaux produits
+✅ (Optionnel) Ajouter aperçu frontend
+⚠️ Important : Exécuter le script de migration AVANT de modifier les routes (pour éviter incohérences temporaires).
+🎯 RÉSULTAT ATTENDU
+Avant (base actuelle) :
+PAIRE GANTS
+t-shirt
+BOITE DE LIAISON ETANCHE
+cable a05vvf 3 x 1.5mm
+CABLE H05VVF 3×2,5mm
+Coffret électrique PM
+Après migration :
+Paire Gants
+T-Shirt
+Boite De Liaison Etanche
+Cable A05vvf 3 X 1.5mm
+Cable H05vvf 3×2,5mm
+Coffret Électrique Pm
+Plus professionnel, plus cohérent, plus facile à lire ! ✨
+⚠️ NOTES IMPORTANTES
+Pourquoi faire ça ?
+✅ Cohérence visuelle : Tous les produits ont le même format
+✅ Professionnalisme : Plus agréable pour les utilisateurs
+✅ Recherche facilitée : Moins de confusion avec majuscules/minuscules
+✅ Prévention doublons : "CABLE" vs "cable" vs "Cable" détecté comme même produit
+Impact sur GestionStockFP
+Stock utilise la même table referentiel.produits_master
+Une fois la migration exécutée ici, Stock verra automatiquement les noms normalisés
+Il faudra aussi mettre à jour Stock pour normaliser lors de créations futures
+Gestion des acronymes
+Pour l'instant, on garde simple : tout en Title Case.
+"CABLE EPI" → "Cable Epi" (pas "Cable EPI")
+"BOITE PVC" → "Boite Pvc" (pas "Boite PVC")
+Si tu veux garder certains acronymes en majuscules (EPI, PVC, DN, PM), on peut améliorer la fonction plus tard.
