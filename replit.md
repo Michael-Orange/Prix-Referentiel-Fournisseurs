@@ -2,7 +2,7 @@
 
 ## Overview
 
-Centralized multi-app PostgreSQL system for Filtreplante (Senegal). Manages products, suppliers, categories, and pricing in FCFA using two PostgreSQL schemas: `referentiel` (shared product data) and `prix` (supplier pricing). Supports three Senegalese fiscal regimes (TVA 18%, Sans TVA, BRS 5%), intelligent duplicate detection via pg_trgm trigrams, automatic price calculations, price history tracking via PostgreSQL trigger, and API key authentication with scopes for integration with other Filtreplante applications.
+Centralized multi-app PostgreSQL system for Filtreplante (Senegal). Manages products, suppliers, categories, and pricing in FCFA using two PostgreSQL schemas: `referentiel` (shared product data) and `prix` (supplier pricing). Supports three Senegalese fiscal regimes (TVA 18%, Sans TVA, BRS 5%), intelligent duplicate detection via pg_trgm trigrams, automatic price calculations, price history tracking via PostgreSQL trigger, JWT-based authentication with encrypted passwords, per-app permissions (Stock/Prix), and admin user management interface.
 
 ## User Preferences
 
@@ -67,27 +67,33 @@ Preferred communication style: Simple, everyday language.
 ```
 
 ### Authentication & Authorization
-- Web UI: Email/password auth via `/api/auth/login`, session stores userId/userEmail/userName/userRole
-- User info (nom, email, role, actif, derniere_connexion) stored in PostgreSQL `users` table
-- Passwords stored in AUTH_PASSWORDS (or AUTH_USERS) secret (format: email:password or email:password:role)
-- 3 users seeded at startup: Marine (admin), Fatou (utilisateur), Michael (admin)
-- Roles: admin (full access), utilisateur (read + movements only)
-- Login updates derniere_connexion in users table
-- External API: `x-api-key` header with scope-based access (unchanged)
-- Scopes: `referentiel:read`, `referentiel:write`, `prix:read`, `prix:write`, `stock:write`
-- Routes use `authOrScope()` middleware (accepts either session OR valid API key)
+- JWT-based auth: tokens stored in HttpOnly cookies (7-day expiry)
+- Login via username dropdown + password at `/api/auth/login`
+- Users stored in `referentiel.users` table with AES-encrypted passwords (reversible for admin visibility)
+- 4 users seeded at startup: Michael (admin, all access), Cheikh (user, stock only), Fatou (user, all access), Marine (user, all access)
+- Roles: admin (full access, user management), user (access per permissions)
+- Per-app permissions: `peut_acces_stock` (Stock app), `peut_acces_prix` (Prix app) enforced via `requireApp()` middleware
+- Routes use `requireAuth` + `requireApp("prix"|"stock")` middleware chain
+- Admin pages protected by `requireAdmin` middleware
+- Admin user management page at `/utilisateurs` (create/edit/toggle users, password visibility)
 
 ### API Endpoints
-- `GET/POST /api/fournisseurs` - CRUD suppliers
+- `POST /api/auth/login` - Login with username/password, returns JWT cookie
+- `POST /api/auth/logout` - Clear JWT cookie
+- `GET /api/auth/me` - Current user info
+- `GET /api/auth/usernames` - List active usernames (public, for login dropdown)
+- `GET/POST /api/fournisseurs` - CRUD suppliers (requireApp "prix")
 - `GET/POST /api/referentiel/categories` - List/create categories
 - `GET/POST /api/referentiel/sous-sections` - List/create sous-sections
 - `GET /api/referentiel/produits` - List products (filters: categorie, stockable, actif, avec_prix)
 - `GET /api/referentiel/produits/search?q=...` - Trigram duplicate search
-- `POST /api/prix/produits/:id/fournisseurs` - Add supplier price
-- `PATCH /api/prix/fournisseurs/:id` - Update price (triggers history)
-- `PATCH /api/prix/fournisseurs/:id/defaut` - Set default supplier
-- `GET /api/prix/fournisseurs/:id/historique` - Price change history
-- `POST /api/admin/api-keys` - Create API key with scopes
+- `POST /api/prix/produits/:id/fournisseurs` - Add supplier price (requireApp "prix")
+- `PATCH /api/prix/fournisseurs/:id` - Update price (triggers history, requireApp "prix")
+- `PATCH /api/prix/fournisseurs/:id/defaut` - Set default supplier (requireApp "prix")
+- `GET /api/prix/fournisseurs/:id/historique` - Price change history (requireApp "prix")
+- `GET/POST /api/admin/users` - Admin user management (requireAdmin)
+- `PATCH /api/admin/users/:id` - Update user (requireAdmin)
+- `GET /api/admin/users/:id/password` - Reveal decrypted password (requireAdmin)
 
 ### Price Calculation Logic (shared/schema.ts)
 ```
@@ -104,9 +110,8 @@ BRS 5%:   prixTtc = null, prixBrs = prixHt / 0.95
 
 ### Environment Variables Required
 - `DATABASE_URL`: PostgreSQL connection string
-- `AUTH_USERS`: User credentials (format: email:password:role, comma-separated)
-- `SESSION_SECRET`: Session encryption key (stored as secret)
-- `API_KEY`: Default API key for external access
+- `JWT_SECRET`: JWT signing key (stored as env var)
+- `PASSWORD_SECRET_KEY`: AES encryption key for passwords (stored as env var)
 
 ### Key NPM Packages
 - **drizzle-orm** + **drizzle-kit**: Database ORM with pgSchema support
@@ -116,6 +121,18 @@ BRS 5%:   prixTtc = null, prixBrs = prixHt / 0.95
 - **zod** + **drizzle-zod**: Runtime schema validation
 
 ## Recent Changes (2026-02-21)
+- **JWT Authentication overhaul**: Replaced express-session/email auth with JWT tokens in HttpOnly cookies + username dropdown login
+  - New `referentiel.users` table with username, password_encrypted (AES), per-app permissions
+  - Middleware: requireAuth (JWT), requireAdmin, requireApp("prix"|"stock")
+  - server/middleware/auth.ts: JWT token generation/verification
+  - server/utils/password-crypto.ts: AES password encryption/decryption (reversible for admin)
+  - server/routes/auth.ts: login, logout, me, usernames endpoints
+  - server/routes/users.ts: admin CRUD for user management
+  - 4 seeded users: michael (admin), cheikh (stock only), fatou (all), marine (all)
+- **Admin Users page**: /utilisateurs route (admin only) with user table, create/edit dialogs, password reveal, activate/deactivate toggle
+- **Per-app permissions enforcement**: Fournisseurs and prix endpoints require "prix" app access; reseed requires admin
+
+### Previous Changes (2026-02-21)
 - Sous-sections: dynamic product sub-categorization via produits_master.sous_section TEXT column
   - No separate table: sous-sections derived dynamically via DISTINCT query on produits_master
   - GET /api/referentiel/sous-sections?categorie=X returns distinct values from products

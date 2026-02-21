@@ -13,8 +13,9 @@ import Fournisseurs from "@/pages/fournisseurs";
 import Categories from "@/pages/categories";
 import Produits from "@/pages/produits";
 import Historique from "@/pages/historique";
+import UsersPage from "@/pages/users";
 
-function Router() {
+function Router({ user }: { user: AuthUser }) {
   return (
     <Switch>
       <Route path="/" component={Dashboard} />
@@ -22,6 +23,11 @@ function Router() {
       <Route path="/categories" component={Categories} />
       <Route path="/produits" component={Produits} />
       <Route path="/historique" component={Historique} />
+      {user.role === "admin" && (
+        <Route path="/utilisateurs">
+          <UsersPage />
+        </Route>
+      )}
       <Route component={NotFound} />
     </Switch>
   );
@@ -45,7 +51,7 @@ function AuthenticatedApp({ user, onLogout }: { user: AuthUser; onLogout: () => 
             </h1>
           </header>
           <main className="flex-1 overflow-auto bg-background">
-            <Router />
+            <Router user={user} />
           </main>
         </div>
       </div>
@@ -62,7 +68,7 @@ function App() {
         if (res.ok) return res.json();
         throw new Error("Not authenticated");
       })
-      .then((data: AuthUser) => setUser(data))
+      .then((data: { user: AuthUser }) => setUser(data.user))
       .catch(() => setUser(null));
   }, []);
 

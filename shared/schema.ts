@@ -137,17 +137,23 @@ export const apiKeys = prixSchema.table("api_keys", {
 
 export type ApiKey = typeof apiKeys.$inferSelect;
 
-export const users = pgTable("users", {
+export const users = referentielSchema.table("users", {
   id: serial("id").primaryKey(),
+  username: text("username").notNull().unique(),
   nom: text("nom").notNull(),
-  email: text("email").notNull().unique(),
-  role: text("role").notNull().default("utilisateur"),
+  email: text("email").unique(),
+  passwordEncrypted: text("password_encrypted").notNull(),
+  peutAccesStock: boolean("peut_acces_stock").notNull().default(false),
+  peutAccesPrix: boolean("peut_acces_prix").notNull().default(false),
+  role: text("role").notNull().default("user"),
   actif: boolean("actif").notNull().default(true),
-  derniereConnexion: timestamp("derniere_connexion"),
   dateCreation: timestamp("date_creation").notNull().defaultNow(),
+  derniereConnexion: timestamp("derniere_connexion"),
+  createdBy: text("created_by"),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertUserSchema = createInsertSchema(users).omit({ id: true, dateCreation: true });
+export const insertUserSchema = createInsertSchema(users).omit({ id: true, dateCreation: true, updatedAt: true });
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 

@@ -1,140 +1,25 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
-import session from "express-session";
+import cookieParser from "cookie-parser";
 import { storage } from "./storage";
 import { resetAndReseed } from "./seed";
 import { insertFournisseurSchema, insertProduitMasterSchema, REGIMES_FISCAUX } from "@shared/schema";
 import { z } from "zod";
-import { findUserByEmail, verifyPassword, updateLastLogin } from "./auth/users";
-
-declare module "express-session" {
-  interface SessionData {
-    userId: number;
-    userEmail: string;
-    userName: string;
-    userRole: string;
-  }
-}
-
-function requireAuth(req: Request, res: Response, next: NextFunction) {
-  if (req.session?.userEmail) {
-    next();
-  } else {
-    res.status(401).json({ error: "Non authentifié" });
-  }
-}
-
-function requireAdmin(req: Request, res: Response, next: NextFunction) {
-  if (!req.session?.userEmail) {
-    return res.status(401).json({ error: "Non authentifié" });
-  }
-  if (req.session.userRole !== "admin") {
-    return res.status(403).json({ error: "Accès admin requis" });
-  }
-  next();
-}
-
-function requireScope(scope: string) {
-  return async (req: Request, res: Response, next: NextFunction) => {
-    const apiKeyHeader = req.headers["x-api-key"] as string | undefined;
-    if (!apiKeyHeader) {
-      return res.status(401).json({ error: "API key manquante" });
-    }
-    const keyData = await storage.getApiKey(apiKeyHeader);
-    if (!keyData) {
-      return res.status(401).json({ error: "API key invalide" });
-    }
-    if (!keyData.scopes.includes(scope)) {
-      return res.status(403).json({ error: `Scope requis: ${scope}` });
-    }
-    (req as any).apiKeyData = keyData;
-    next();
-  };
-}
-
-function authOrScope(scope: string) {
-  return async (req: Request, res: Response, next: NextFunction) => {
-    if (req.session?.userEmail) {
-      return next();
-    }
-    const apiKeyHeader = req.headers["x-api-key"] as string | undefined;
-    if (apiKeyHeader) {
-      const keyData = await storage.getApiKey(apiKeyHeader);
-      if (keyData && keyData.scopes.includes(scope)) {
-        (req as any).apiKeyData = keyData;
-        return next();
-      }
-    }
-    res.status(401).json({ error: "Authentification requise" });
-  };
-}
+import { requireAuth, requireAdmin, requireApp, verifyToken } from "./middleware/auth";
+import authRoutes from "./routes/auth";
+import usersRoutes from "./routes/users";
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
   if (process.env.NODE_ENV === "production") {
     app.set("trust proxy", 1);
   }
 
-  app.use(
-    session({
-      secret: process.env.SESSION_SECRET || "filtreplante-session-secret",
-      resave: false,
-      saveUninitialized: false,
-      cookie: {
-        secure: process.env.NODE_ENV === "production",
-        httpOnly: true,
-        maxAge: 30 * 24 * 60 * 60 * 1000,
-        sameSite: "lax",
-      },
-    })
-  );
+  app.use(cookieParser());
 
-  app.post("/api/auth/login", async (req, res) => {
-    const { email, password } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ error: "Email et mot de passe requis" });
-    }
-    try {
-      const user = await findUserByEmail(email);
-      if (!user || !verifyPassword(email, password)) {
-        return res.status(401).json({ error: "Email ou mot de passe incorrect" });
-      }
-      await updateLastLogin(user.id);
-      req.session.userId = user.id;
-      req.session.userEmail = user.email;
-      req.session.userName = user.nom;
-      req.session.userRole = user.role;
-      res.json({ id: user.id, nom: user.nom, email: user.email, role: user.role });
-    } catch (error) {
-      console.error("Erreur login:", error);
-      res.status(500).json({ error: "Erreur serveur" });
-    }
-  });
+  app.use("/api/auth", authRoutes);
+  app.use("/api/admin/users", usersRoutes);
 
-  app.get("/api/auth/me", async (req, res) => {
-    if (!req.session?.userEmail) {
-      return res.status(401).json({ error: "Non authentifié" });
-    }
-    try {
-      const user = await findUserByEmail(req.session.userEmail);
-      if (!user) {
-        req.session.destroy(() => {});
-        return res.status(401).json({ error: "Utilisateur introuvable" });
-      }
-      res.json({ id: user.id, nom: user.nom, email: user.email, role: user.role });
-    } catch (error) {
-      console.error("Erreur /me:", error);
-      res.status(500).json({ error: "Erreur serveur" });
-    }
-  });
-
-  app.post("/api/auth/logout", (req, res) => {
-    req.session.destroy(() => {
-      res.clearCookie("connect.sid");
-      res.json({ success: true });
-    });
-  });
-
-  app.post("/api/admin/reseed", requireAuth, async (_req, res) => {
+  app.post("/api/admin/reseed", requireAuth, requireAdmin, async (_req, res) => {
     try {
       await resetAndReseed();
       res.json({ success: true, message: "Base de données réinitialisée" });
@@ -154,7 +39,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/fournisseurs", authOrScope("prix:read"), async (req, res) => {
+  app.get("/api/fournisseurs", requireAuth, requireApp("prix"), async (req, res) => {
     try {
       const includeInactifs = req.query.includeInactifs === "true";
       res.json(await storage.getFournisseurs(includeInactifs));
@@ -164,7 +49,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/fournisseurs/list", authOrScope("prix:read"), async (req, res) => {
+  app.get("/api/fournisseurs/list", requireAuth, requireApp("prix"), async (req, res) => {
     try {
       const includeInactifs = req.query.includeInactifs === "true";
       res.json(await storage.getFournisseurs(includeInactifs));
@@ -174,7 +59,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/fournisseurs/:id", authOrScope("prix:read"), async (req, res) => {
+  app.get("/api/fournisseurs/:id", requireAuth, requireApp("prix"), async (req, res) => {
     try {
       const f = await storage.getFournisseur(parseInt(req.params.id));
       if (!f) return res.status(404).json({ error: "Fournisseur non trouvé" });
@@ -185,7 +70,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/fournisseurs", authOrScope("prix:write"), async (req, res) => {
+  app.post("/api/fournisseurs", requireAuth, requireApp("prix"), async (req, res) => {
     try {
       const data = insertFournisseurSchema.parse(req.body);
       res.status(201).json(await storage.createFournisseur(data));
@@ -196,7 +81,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/fournisseurs/:id", authOrScope("prix:write"), async (req, res) => {
+  app.patch("/api/fournisseurs/:id", requireAuth, requireApp("prix"), async (req, res) => {
     try {
       const data = insertFournisseurSchema.partial().parse(req.body);
       const f = await storage.updateFournisseur(parseInt(req.params.id), data);
@@ -209,7 +94,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/fournisseurs/:id/desactiver", authOrScope("prix:write"), async (req, res) => {
+  app.patch("/api/fournisseurs/:id/desactiver", requireAuth, requireApp("prix"), async (req, res) => {
     try {
       const f = await storage.desactiverFournisseur(parseInt(req.params.id));
       if (!f) return res.status(404).json({ error: "Fournisseur non trouvé" });
@@ -220,7 +105,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/fournisseurs/:id/reactiver", authOrScope("prix:write"), async (req, res) => {
+  app.patch("/api/fournisseurs/:id/reactiver", requireAuth, requireApp("prix"), async (req, res) => {
     try {
       const f = await storage.reactiverFournisseur(parseInt(req.params.id));
       if (!f) return res.status(404).json({ error: "Fournisseur non trouvé" });
@@ -231,7 +116,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/referentiel/categories", authOrScope("referentiel:read"), async (_req, res) => {
+  app.get("/api/referentiel/categories", requireAuth, async (_req, res) => {
     try {
       res.json({ categories: await storage.getCategories() });
     } catch (error) {
@@ -240,7 +125,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/referentiel/categories", authOrScope("referentiel:write"), async (req, res) => {
+  app.post("/api/referentiel/categories", requireAuth, async (req, res) => {
     try {
       const { nom } = req.body;
       if (!nom || nom.trim() === "") {
@@ -264,7 +149,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/referentiel/sous-sections", authOrScope("referentiel:read"), async (req, res) => {
+  app.get("/api/referentiel/sous-sections", requireAuth, async (req, res) => {
     try {
       const categorie = req.query.categorie as string | undefined;
       const rows = await storage.getSousSectionsDynamiques(categorie);
@@ -275,7 +160,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/referentiel/categories/:id/stockable", authOrScope("referentiel:write"), async (req, res) => {
+  app.patch("/api/referentiel/categories/:id/stockable", requireAuth, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const { est_stockable } = req.body;
@@ -291,7 +176,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/referentiel/unites", authOrScope("referentiel:read"), async (_req, res) => {
+  app.get("/api/referentiel/unites", requireAuth, async (_req, res) => {
     try {
       res.json({ unites: await storage.getUnites() });
     } catch (error) {
@@ -300,7 +185,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/referentiel/produits", authOrScope("referentiel:read"), async (req, res) => {
+  app.get("/api/referentiel/produits", requireAuth, async (req, res) => {
     try {
       const filters: any = {};
       if (req.query.categorie) filters.categorie = req.query.categorie as string;
@@ -315,7 +200,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/referentiel/produits/search", authOrScope("referentiel:read"), async (req, res) => {
+  app.get("/api/referentiel/produits/search", requireAuth, async (req, res) => {
     try {
       const q = req.query.q as string;
       const categorie = req.query.categorie as string | undefined;
@@ -328,7 +213,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/referentiel/produits/:id", authOrScope("referentiel:read"), async (req, res) => {
+  app.get("/api/referentiel/produits/:id", requireAuth, async (req, res) => {
     try {
       const produit = await storage.getProduit(parseInt(req.params.id));
       if (!produit) return res.status(404).json({ error: "Produit non trouvé" });
@@ -339,12 +224,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/referentiel/produits", authOrScope("referentiel:write"), async (req, res) => {
+  app.post("/api/referentiel/produits", requireAuth, async (req, res) => {
     try {
-      const apiKeyName = (req as any).apiKeyData?.nom;
       const data = insertProduitMasterSchema.parse({
         ...req.body,
-        creePar: req.session?.userName || req.body.creePar || req.body.cree_par || apiKeyName || 'Système',
+        creePar: (req as any).user?.nom || req.body.creePar || req.body.cree_par || 'Système',
       });
       const produit = await storage.createProduit(data);
       res.status(201).json(produit);
@@ -355,7 +239,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/referentiel/produits/:id", authOrScope("referentiel:write"), async (req, res) => {
+  app.patch("/api/referentiel/produits/:id", requireAuth, async (req, res) => {
     try {
       const updateData: any = {};
       if (req.body.nom !== undefined) updateData.nom = req.body.nom;
@@ -378,7 +262,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/referentiel/produits/:id/desactiver", authOrScope("referentiel:write"), async (req, res) => {
+  app.patch("/api/referentiel/produits/:id/desactiver", requireAuth, async (req, res) => {
     try {
       const produit = await storage.desactiverProduit(parseInt(req.params.id));
       if (!produit) return res.status(404).json({ error: "Produit introuvable" });
@@ -389,7 +273,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/referentiel/produits/:id/reactiver", authOrScope("referentiel:write"), async (req, res) => {
+  app.patch("/api/referentiel/produits/:id/reactiver", requireAuth, async (req, res) => {
     try {
       const produit = await storage.reactiverProduit(parseInt(req.params.id));
       if (!produit) return res.status(404).json({ error: "Produit introuvable" });
@@ -400,7 +284,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/referentiel/produits/:id/stockable", authOrScope("stock:write"), async (req, res) => {
+  app.patch("/api/referentiel/produits/:id/stockable", requireAuth, async (req, res) => {
     try {
       const { est_stockable } = req.body;
       if (est_stockable) {
@@ -418,7 +302,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/prix/produits/:id/fournisseurs", authOrScope("prix:write"), async (req, res) => {
+  app.post("/api/prix/produits/:id/fournisseurs", requireAuth, requireApp("prix"), async (req, res) => {
     try {
       const produitId = parseInt(req.params.id);
       const { fournisseur_id, prix_ht, regime_fiscal, est_fournisseur_defaut } = req.body;
@@ -436,7 +320,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         prixHt: prix_ht,
         regimeFiscal: regime_fiscal,
         estFournisseurDefaut: est_fournisseur_defaut,
-        creePar: req.session?.userName || req.body.creePar || req.body.cree_par || (req as any).apiKeyData?.nom || 'Système',
+        creePar: (req as any).user?.nom || req.body.creePar || req.body.cree_par || 'Système',
       });
       res.status(201).json(prix);
     } catch (error: any) {
@@ -445,10 +329,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/prix/fournisseurs/:id", authOrScope("prix:write"), async (req, res) => {
+  app.patch("/api/prix/fournisseurs/:id", requireAuth, requireApp("prix"), async (req, res) => {
     try {
       const { prix_ht, regime_fiscal } = req.body;
-      const userName = req.session?.userName || req.body.modifiePar || req.body.modifie_par || (req as any).apiKeyData?.nom || 'Système';
+      const userName = (req as any).user?.nom || req.body.modifiePar || req.body.modifie_par || 'Système';
       const prix = await storage.updatePrix(parseInt(req.params.id), {
         prixHt: prix_ht,
         regimeFiscal: regime_fiscal,
@@ -461,7 +345,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.patch("/api/prix/fournisseurs/:id/defaut", authOrScope("prix:write"), async (req, res) => {
+  app.patch("/api/prix/fournisseurs/:id/defaut", requireAuth, requireApp("prix"), async (req, res) => {
     try {
       const prixId = parseInt(req.params.id);
       const prixList = await storage.getPrixProduit(0);
@@ -489,7 +373,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.delete("/api/prix/fournisseurs/:id/defaut", authOrScope("prix:write"), async (req, res) => {
+  app.delete("/api/prix/fournisseurs/:id/defaut", requireAuth, requireApp("prix"), async (req, res) => {
     try {
       await storage.retirerFournisseurDefaut(parseInt(req.params.id));
       res.json({ success: true });
@@ -499,7 +383,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/prix/fournisseurs/:id/historique", authOrScope("prix:read"), async (req, res) => {
+  app.get("/api/prix/fournisseurs/:id/historique", requireAuth, requireApp("prix"), async (req, res) => {
     try {
       const historique = await storage.getHistoriquePrix(parseInt(req.params.id));
       res.json({ historique });

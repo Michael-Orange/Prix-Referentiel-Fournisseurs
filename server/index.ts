@@ -3,7 +3,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { seedDatabase } from "./seed";
-import { setupDatabase, createTrigger } from "./setupDb";
+import { setupDatabase, createTrigger, seedUsers } from "./setupDb";
 
 const app = express();
 const httpServer = createServer(app);
@@ -66,6 +66,7 @@ app.use((req, res, next) => {
     await setupDatabase();
     await seedDatabase();
     await createTrigger();
+    await seedUsers();
   } catch (error) {
     console.error("Error setting up database:", error);
   }

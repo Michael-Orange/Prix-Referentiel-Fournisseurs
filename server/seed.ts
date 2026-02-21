@@ -1,5 +1,5 @@
 import { db, pool } from "./db";
-import { categories, unites, produitsMaster, fournisseurs, users, normaliserNom } from "@shared/schema";
+import { categories, unites, produitsMaster, fournisseurs, normaliserNom } from "@shared/schema";
 import { parse } from "csv-parse/sync";
 import fs from "fs";
 import path from "path";
@@ -17,7 +17,6 @@ const UNITE_MAPPING: Record<string, { code: string; libelle: string; type: strin
 };
 
 export async function seedDatabase() {
-  await seedUsers();
   console.log("🚀 Checking if seed data exists...");
   const existing = await db.select().from(produitsMaster).limit(1);
   if (existing.length > 0) {
@@ -25,18 +24,6 @@ export async function seedDatabase() {
     return;
   }
   await runSeed();
-}
-
-async function seedUsers() {
-  const initialUsers = [
-    { nom: "Marine", email: "marine@filtreplante.com", role: "admin" },
-    { nom: "Fatou", email: "fatou@filtreplante.com", role: "utilisateur" },
-    { nom: "Michael", email: "michael@filtreplante.com", role: "admin" },
-  ];
-  for (const u of initialUsers) {
-    await db.insert(users).values(u).onConflictDoNothing();
-  }
-  console.log("✅ Utilisateurs initiaux vérifiés");
 }
 
 export async function resetAndReseed() {

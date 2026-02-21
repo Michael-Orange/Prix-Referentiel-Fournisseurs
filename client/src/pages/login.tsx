@@ -1,17 +1,19 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Lock, Mail } from "lucide-react";
-import { useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { Loader2, Lock, User } from "lucide-react";
 
 export interface AuthUser {
+  id: number;
+  username: string;
   nom: string;
-  email: string;
   role: string;
+  peutAccesStock: boolean;
+  peutAccesPrix: boolean;
 }
 
 interface LoginProps {
@@ -19,35 +21,38 @@ interface LoginProps {
 }
 
 export default function Login({ onLogin }: LoginProps) {
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [usernames, setUsernames] = useState<string[]>([]);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const { toast } = useToast();
 
-  const loginMutation = useMutation({
-    mutationFn: async (credentials: { email: string; password: string }) => {
-      const response = await apiRequest("POST", "/api/auth/login", credentials);
-      return response.json() as Promise<AuthUser>;
-    },
-    onSuccess: (user) => {
-      toast({
-        title: "Connexion réussie",
-        description: `Bienvenue ${user.nom}`,
-      });
-      onLogin(user);
-    },
-    onError: () => {
-      toast({
-        title: "Erreur de connexion",
-        description: "Email ou mot de passe incorrect",
-        variant: "destructive",
-      });
-    },
-  });
+  useEffect(() => {
+    fetch("/api/auth/usernames")
+      .then((r) => r.json())
+      .then((data) => setUsernames(data.usernames || []))
+      .catch(() => {});
+  }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (email.trim() && password.trim()) {
-      loginMutation.mutate({ email, password });
+    if (!username.trim() || !password.trim()) return;
+    setIsLoggingIn(true);
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ username, password }),
+      });
+      if (!res.ok) throw new Error("Invalid credentials");
+      const data = await res.json();
+      toast({ title: "Connexion réussie", description: `Bienvenue ${data.user.nom}` });
+      onLogin(data.user);
+    } catch {
+      toast({ title: "Erreur de connexion", description: "Nom d'utilisateur ou mot de passe incorrect", variant: "destructive" });
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -66,20 +71,20 @@ export default function Login({ onLogin }: LoginProps) {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="email@filtreplante.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="pl-9"
-                  autoComplete="email"
-                  data-testid="input-email"
-                />
-              </div>
+              <Label htmlFor="username">Utilisateur</Label>
+              <Select value={username} onValueChange={setUsername}>
+                <SelectTrigger data-testid="select-username">
+                  <User className="h-4 w-4 mr-2 text-muted-foreground" />
+                  <SelectValue placeholder="Sélectionnez votre nom" />
+                </SelectTrigger>
+                <SelectContent>
+                  {usernames.map((name) => (
+                    <SelectItem key={name} value={name} data-testid={`option-user-${name}`}>
+                      {name.charAt(0).toUpperCase() + name.slice(1)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Mot de passe</Label>
@@ -100,10 +105,10 @@ export default function Login({ onLogin }: LoginProps) {
             <Button
               type="submit"
               className="w-full"
-              disabled={loginMutation.isPending || !email.trim() || !password.trim()}
+              disabled={isLoggingIn || !username.trim() || !password.trim()}
               data-testid="button-login"
             >
-              {loginMutation.isPending ? (
+              {isLoggingIn ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Connexion...

@@ -1,4 +1,7 @@
-import { pool } from "./db";
+import { pool, db } from "./db";
+import { users } from "@shared/schema";
+import { eq } from "drizzle-orm";
+import { encryptPassword } from "./utils/password-crypto";
 
 export async function setupDatabase() {
   const client = await pool.connect();
@@ -8,20 +11,98 @@ export async function setupDatabase() {
     await client.query(`CREATE SCHEMA IF NOT EXISTS referentiel;`);
     await client.query(`CREATE SCHEMA IF NOT EXISTS prix;`);
     await client.query(`
-      CREATE TABLE IF NOT EXISTS users (
+      CREATE TABLE IF NOT EXISTS referentiel.users (
         id SERIAL PRIMARY KEY,
+        username TEXT UNIQUE NOT NULL,
         nom TEXT NOT NULL,
-        email TEXT NOT NULL UNIQUE,
-        role TEXT NOT NULL DEFAULT 'utilisateur',
+        email TEXT UNIQUE,
+        password_encrypted TEXT NOT NULL,
+        peut_acces_stock BOOLEAN NOT NULL DEFAULT false,
+        peut_acces_prix BOOLEAN NOT NULL DEFAULT false,
+        role TEXT NOT NULL DEFAULT 'user',
         actif BOOLEAN NOT NULL DEFAULT true,
+        date_creation TIMESTAMP NOT NULL DEFAULT NOW(),
         derniere_connexion TIMESTAMP,
-        date_creation TIMESTAMP NOT NULL DEFAULT NOW()
+        created_by TEXT,
+        updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_ref_users_username ON referentiel.users(username);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_ref_users_actif ON referentiel.users(actif);`);
     await client.query(`ALTER TABLE referentiel.categories ADD COLUMN IF NOT EXISTS est_stockable BOOLEAN NOT NULL DEFAULT true;`);
-    console.log("✅ Schemas referentiel et prix créés, table users, pg_trgm activé");
+    console.log("✅ Schemas referentiel et prix créés, table referentiel.users, pg_trgm activé");
   } finally {
     client.release();
+  }
+}
+
+const INITIAL_USERS = [
+  {
+    username: "michael",
+    nom: "Michael",
+    email: "michael@filtreplante.com",
+    password: "Michael@FP2026",
+    peutAccesStock: true,
+    peutAccesPrix: true,
+    role: "admin" as const,
+  },
+  {
+    username: "cheikh",
+    nom: "Cheikh",
+    email: null,
+    password: "Cheikh@FP2026",
+    peutAccesStock: true,
+    peutAccesPrix: false,
+    role: "user" as const,
+  },
+  {
+    username: "fatou",
+    nom: "Fatou",
+    email: "fatou@filtreplante.com",
+    password: "Fatou@FP2026",
+    peutAccesStock: true,
+    peutAccesPrix: true,
+    role: "user" as const,
+  },
+  {
+    username: "marine",
+    nom: "Marine",
+    email: null,
+    password: "Marine@FP2026",
+    peutAccesStock: true,
+    peutAccesPrix: true,
+    role: "user" as const,
+  },
+];
+
+export async function seedUsers() {
+  for (const userData of INITIAL_USERS) {
+    try {
+      const [existing] = await db
+        .select()
+        .from(users)
+        .where(eq(users.username, userData.username))
+        .limit(1);
+
+      if (existing) continue;
+
+      await db.insert(users).values({
+        username: userData.username,
+        nom: userData.nom,
+        email: userData.email,
+        passwordEncrypted: encryptPassword(userData.password),
+        peutAccesStock: userData.peutAccesStock,
+        peutAccesPrix: userData.peutAccesPrix,
+        role: userData.role,
+      });
+      console.log(`✅ User créé: ${userData.username}`);
+    } catch (error: any) {
+      if (error.message?.includes("unique")) {
+        console.log(`⚠️ ${userData.username} existe déjà`);
+      } else {
+        console.error(`❌ ${userData.username}:`, error.message);
+      }
+    }
   }
 }
 

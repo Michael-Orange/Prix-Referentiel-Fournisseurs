@@ -18,7 +18,8 @@ import {
   Package, 
   History,
   LogOut,
-  User
+  User,
+  Shield
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { AuthUser } from "@/pages/login";
@@ -98,6 +99,27 @@ export function AppSidebar({ user, onLogout }: AppSidebarProps) {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+        {user.role === "admin" && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Administration</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton 
+                    asChild 
+                    isActive={location === "/utilisateurs"}
+                    data-testid="nav-utilisateurs"
+                  >
+                    <Link href="/utilisateurs">
+                      <Shield className="h-4 w-4" />
+                      <span>Utilisateurs</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
       <SidebarFooter className="border-t border-sidebar-border p-4 space-y-3">
         <div className="flex items-center gap-3" data-testid="text-user-info">
