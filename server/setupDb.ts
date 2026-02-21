@@ -3,6 +3,7 @@ import { pool } from "./db";
 export async function setupDatabase() {
   const client = await pool.connect();
   try {
+    await client.query(`SET search_path TO public, referentiel, prix;`);
     await client.query(`CREATE EXTENSION IF NOT EXISTS pg_trgm;`);
     await client.query(`CREATE SCHEMA IF NOT EXISTS referentiel;`);
     await client.query(`CREATE SCHEMA IF NOT EXISTS prix;`);
