@@ -1,0 +1,91 @@
+## DÉCISIONS ARCHITECTURE
+
+### 1. TABLE USERS : Option A (Nouvelle table referentiel.users)
+
+Créer une nouvelle table propre dans schema `referentiel` avec la structure complète.
+
+**Migration SQL à exécuter** :
+
+```sql
+-- Créer nouvelle table
+CREATE TABLE referentiel.users (
+  id SERIAL PRIMARY KEY,
+  username TEXT UNIQUE NOT NULL,
+  nom TEXT NOT NULL,
+  email TEXT UNIQUE,
+  password_encrypted TEXT NOT NULL,
+  
+  peut_acces_stock BOOLEAN NOT NULL DEFAULT false,
+  peut_acces_prix BOOLEAN NOT NULL DEFAULT false,
+  
+  role TEXT NOT NULL DEFAULT 'user',
+  actif BOOLEAN NOT NULL DEFAULT true,
+  
+  date_creation TIMESTAMP NOT NULL DEFAULT NOW(),
+  derniere_connexion TIMESTAMP,
+  created_by TEXT,
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_users_username ON referentiel.users(username);
+CREATE INDEX idx_users_actif ON referentiel.users(actif);
+L'ancienne table public.users peut être supprimée APRÈS validation complète (garde-la pour l'instant en backup).
+2. USERS EXISTANTS : Approche B (Fresh start)
+Fresh start avec 4 nouveaux users via script init-users.ts :
+michael (Admin, Prix + Stock)
+cheikh (User, Stock uniquement)
+fatou (User, Prix + Stock)
+marine (User, Prix + Stock)
+Pattern passwords : Prenom@FP2026
+Exemple :
+michael → Michael@FP2026
+cheikh → Cheikh@FP2026
+etc.
+Je recréerai les autres users éventuels via l'interface admin après déploiement.
+⚠️ Ne pas migrer les users existants de public.users - table complètement différente.
+3. FRONTEND LOGIN : Remplacement direct
+Remplacer directement l'ancienne page login par la nouvelle (username dropdown + password).
+Pas besoin de phase de transition car :
+Apps internes uniquement
+Petite équipe (4 users)
+Je peux tester immédiatement
+Ancienne page login : Tu peux la supprimer ou la renommer en LoginOld.tsx (backup temporaire).
+4. API KEYS : Simplifier authOrScope()
+Aucun service externe n'utilise les APIs avec API keys.
+Tu peux simplifier authOrScope() pour supporter UNIQUEMENT JWT :
+// Nouvelle version simplifiée
+export function authOrScope(requiredScopes: string[] = []) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    // Vérifier JWT uniquement
+    const token = req.cookies?.auth_token;
+    
+    if (!token) {
+      return res.status(401).json({ error: "Non authentifié" });
+    }
+    
+    const payload = verifyToken(token);
+    
+    if (!payload) {
+      return res.status(401).json({ error: "Token invalide" });
+    }
+    
+    (req as any).user = payload;
+    
+    // Vérifier scopes si requis (optionnel selon usage actuel)
+    if (requiredScopes.length > 0) {
+      const hasScope = requiredScopes.some(scope => payload.apps.includes(scope));
+      if (!hasScope && payload.role !== 'admin') {
+        return res.status(403).json({ error: "Permissions insuffisantes" });
+      }
+    }
+    
+    next();
+  };
+}
+Si tu veux garder la logique API key pour l'avenir (même si inutilisée), garde le code hybrid du brief. Sinon simplifie.
+Ma préférence : Simplifie (pas besoin API key).
+PRÉCISIONS IMPLÉMENTATION
+Variables d'environnement (Replit Secrets)
+AJOUTER ces 2 secrets :
+JWT_SECRET=<générer avec node -e "console.log(require('crypto').randomBytes(32).toString('hex'))">
+PASSWORD_SECRET_KEY=<générer différent avec même commande>
