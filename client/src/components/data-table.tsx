@@ -28,8 +28,9 @@ interface DataTableProps<T> {
   emptyActionLabel?: string;
   onEmptyAction?: () => void;
   className?: string;
-  onRowClick?: (item: T) => void;
+  onRowClick?: (item: T, e: React.MouseEvent) => void;
   rowClassName?: (item: T) => string;
+  rowDataAttributes?: (item: T) => Record<string, string | undefined>;
 }
 
 export function DataTable<T>({
@@ -44,6 +45,7 @@ export function DataTable<T>({
   className,
   onRowClick,
   rowClassName,
+  rowDataAttributes,
 }: DataTableProps<T>) {
   if (isLoading) {
     return <LoadingState />;
@@ -81,7 +83,8 @@ export function DataTable<T>({
                 onRowClick && "cursor-pointer hover:bg-muted/50",
                 rowClassName?.(item)
               )}
-              onClick={() => onRowClick?.(item)}
+              onClick={(e) => onRowClick?.(item, e)}
+              {...(rowDataAttributes?.(item) || {})}
             >
               {columns.map((column) => (
                 <TableCell key={column.key} className={column.className}>

@@ -38,7 +38,6 @@ import { formatFCFA, formatDate, formatDateTime } from "@/lib/utils";
 import {
   Plus,
   Package,
-  Pencil,
   DollarSign,
   History,
   Star,
@@ -399,6 +398,24 @@ export default function Produits() {
       prixHt: produit.fournisseurDefaut?.prixHt || 0,
       regimeFiscal: produit.fournisseurDefaut?.regimeFiscal || "tva_18",
     });
+    setTimeout(() => {
+      const firstInput = document.querySelector(`tr[data-editing-id="${produit.id}"] input`) as HTMLInputElement | null;
+      if (firstInput) {
+        firstInput.focus();
+        firstInput.select();
+      }
+    }, 50);
+  };
+
+  const handleRowClick = (produit: ProduitWithPrixDefaut, e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('button') || target.closest('[role="button"]') || target.closest('input') || target.closest('[role="combobox"]')) {
+      return;
+    }
+    if (editingRow === produit.id) {
+      return;
+    }
+    startEditing(produit);
   };
 
   const cancelEditing = () => {
@@ -455,8 +472,8 @@ export default function Produits() {
             <Input
               value={editForm.nom}
               onChange={(e) => setEditForm({ ...editForm, nom: e.target.value })}
+              onClick={(e) => e.stopPropagation()}
               className="h-8 text-sm"
-              autoFocus
               data-testid={`input-edit-nom-${p.id}`}
             />
           );
@@ -466,7 +483,6 @@ export default function Produits() {
             <span
               className={`font-medium ${!p.actif ? 'text-muted-foreground line-through' : ''}`}
               data-testid={`text-produit-${p.id}`}
-              onDoubleClick={() => startEditing(p)}
             >
               {p.nom}
             </span>
@@ -486,7 +502,7 @@ export default function Produits() {
               value={editForm.estStockable ? "oui" : "non"}
               onValueChange={(v) => setEditForm({ ...editForm, estStockable: v === "oui" })}
             >
-              <SelectTrigger className="h-8 text-sm w-[120px]" data-testid={`select-edit-stockage-${p.id}`}>
+              <SelectTrigger className="h-8 text-sm w-[120px]" onClick={(e) => e.stopPropagation()} data-testid={`select-edit-stockage-${p.id}`}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -500,7 +516,6 @@ export default function Produits() {
           <Badge
             variant={p.estStockable ? "default" : "secondary"}
             className={p.estStockable ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"}
-            onDoubleClick={() => startEditing(p)}
           >
             {p.estStockable ? "Stockable" : "Non"}
           </Badge>
@@ -535,7 +550,7 @@ export default function Produits() {
               value={editForm.fournisseurId?.toString() || ""}
               onValueChange={(v) => setEditForm({ ...editForm, fournisseurId: parseInt(v) })}
             >
-              <SelectTrigger className="h-8 text-sm" data-testid={`select-edit-fournisseur-${p.id}`}>
+              <SelectTrigger className="h-8 text-sm" onClick={(e) => e.stopPropagation()} data-testid={`select-edit-fournisseur-${p.id}`}>
                 <SelectValue placeholder="Choisir..." />
               </SelectTrigger>
               <SelectContent>
@@ -547,11 +562,11 @@ export default function Produits() {
           );
         }
         return p.fournisseurDefaut ? (
-          <div className="text-sm" onDoubleClick={() => startEditing(p)}>
+          <div className="text-sm">
             <span className="font-medium">{p.fournisseurDefaut.nom}</span>
           </div>
         ) : (
-          <span className="text-muted-foreground text-sm cursor-pointer" onDoubleClick={() => startEditing(p)}>-</span>
+          <span className="text-muted-foreground text-sm">-</span>
         );
       },
     },
@@ -573,13 +588,14 @@ export default function Produits() {
               min="0"
               value={editForm.prixHt || ""}
               onChange={(e) => setEditForm({ ...editForm, prixHt: parseFloat(e.target.value) || 0 })}
+              onClick={(e) => e.stopPropagation()}
               className="h-8 text-sm text-right"
               data-testid={`input-edit-prix-${p.id}`}
             />
           );
         }
         return (
-          <span className="font-medium cursor-pointer" onDoubleClick={() => startEditing(p)}>
+          <span className="font-medium">
             {p.fournisseurDefaut ? formatFCFA(p.fournisseurDefaut.prixHt) : "-"}
           </span>
         );
@@ -597,7 +613,7 @@ export default function Produits() {
               value={editForm.regimeFiscal}
               onValueChange={(v) => setEditForm({ ...editForm, regimeFiscal: v })}
             >
-              <SelectTrigger className="h-8 text-sm" data-testid={`select-edit-regime-${p.id}`}>
+              <SelectTrigger className="h-8 text-sm" onClick={(e) => e.stopPropagation()} data-testid={`select-edit-regime-${p.id}`}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -609,7 +625,7 @@ export default function Produits() {
           );
         }
         return p.fournisseurDefaut ? (
-          <div onDoubleClick={() => startEditing(p)}>
+          <div>
             <RegimeBadge regime={p.fournisseurDefaut.regimeFiscal} size="sm" />
           </div>
         ) : (
@@ -680,14 +696,6 @@ export default function Produits() {
         }
         return (
           <div className="flex items-center justify-end gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => startEditing(p)}
-              data-testid={`button-edit-${p.id}`}
-            >
-              <Pencil className="h-4 w-4" />
-            </Button>
             <Button
               variant="ghost"
               size="icon"
@@ -790,8 +798,14 @@ export default function Produits() {
         emptyIcon={Package}
         emptyTitle="Aucun produit"
         emptyDescription="Aucun produit ne correspond aux filtres"
-        onRowClick={(p) => { if (editingRow !== p.id) setSelectedProductId(p.id); }}
-        rowClassName={(p) => !p.actif ? "opacity-60 bg-gray-50" : ""}
+        onRowClick={(p, e) => handleRowClick(p, e)}
+        rowClassName={(p) => {
+          const classes: string[] = [];
+          if (!p.actif) classes.push("opacity-60 bg-gray-50");
+          if (editingRow === p.id) classes.push("bg-blue-50 ring-2 ring-blue-300");
+          return classes.join(" ");
+        }}
+        rowDataAttributes={(p) => editingRow === p.id ? { "data-editing-id": p.id.toString() } : {}}
       />
 
       {/* Create Product Dialog */}
