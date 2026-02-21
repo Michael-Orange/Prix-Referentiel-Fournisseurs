@@ -173,7 +173,7 @@ export class DatabaseStorage implements IStorage {
           prixBrs: fDef.prixBrs,
           regimeFiscal: fDef.regimeFiscal,
         } : null,
-        prixDateModification: fDef ? (fDef.dateModification || fDef.dateCreation) : null,
+        prixDateModification: fDef ? (fDef.dateModification || fDef.dateCreation) : (p.dateModification || p.dateCreation),
       });
     }
 

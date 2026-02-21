@@ -273,9 +273,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/referentiel/produits", authOrScope("referentiel:write"), async (req, res) => {
     try {
+      const apiKeyName = (req as any).apiKeyData?.nom;
       const data = insertProduitMasterSchema.parse({
         ...req.body,
-        creePar: req.session?.userName || 'Système',
+        creePar: req.session?.userName || req.body.creePar || req.body.cree_par || apiKeyName || 'Système',
       });
       const produit = await storage.createProduit(data);
       res.status(201).json(produit);
@@ -355,7 +356,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         prixHt: prix_ht,
         regimeFiscal: regime_fiscal,
         estFournisseurDefaut: est_fournisseur_defaut,
-        creePar: req.session?.userName || 'Système',
+        creePar: req.session?.userName || req.body.creePar || req.body.cree_par || (req as any).apiKeyData?.nom || 'Système',
       });
       res.status(201).json(prix);
     } catch (error: any) {
@@ -367,7 +368,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.patch("/api/prix/fournisseurs/:id", authOrScope("prix:write"), async (req, res) => {
     try {
       const { prix_ht, regime_fiscal } = req.body;
-      const userName = req.session?.userName || 'Système';
+      const userName = req.session?.userName || req.body.modifiePar || req.body.modifie_par || (req as any).apiKeyData?.nom || 'Système';
       const prix = await storage.updatePrix(parseInt(req.params.id), {
         prixHt: prix_ht,
         regimeFiscal: regime_fiscal,

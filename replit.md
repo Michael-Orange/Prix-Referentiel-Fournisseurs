@@ -114,7 +114,13 @@ BRS 5%:   prixTtc = null, prixBrs = prixHt / 0.95
 - **csv-parse**: CSV import for bulk product loading (338 products)
 - **zod** + **drizzle-zod**: Runtime schema validation
 
-## Recent Changes (2026-02-20)
+## Recent Changes (2026-02-21)
+- Cleaned up Neon DB: replaced numeric IDs in creePar with actual user names (1→Marine, 2→Fatou, 3→Michael)
+- creePar now accepts body values (creePar/cree_par) from external API calls, with API key name as fallback
+- Dernière MAJ logic: shows price modification date if prices exist, otherwise product modification date
+- Added inactive products management: desactiver/reactiver endpoints, visual distinction in UI, filter checkbox
+
+## Previous Changes (2026-02-20)
 - Replaced single-password auth with email/password auth (3 users: Marine, Fatou, Michael)
 - Users stored in AUTH_USERS secret, parsed at startup with robust format handling
 - Session stores userEmail/userName/userRole, sidebar shows connected user info
