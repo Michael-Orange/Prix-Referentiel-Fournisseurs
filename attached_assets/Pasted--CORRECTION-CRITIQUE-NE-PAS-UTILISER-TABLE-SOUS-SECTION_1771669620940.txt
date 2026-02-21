@@ -1,0 +1,262 @@
+# ⚠️ CORRECTION CRITIQUE : NE PAS UTILISER TABLE SOUS_SECTIONS
+
+## PROBLÈME
+Replit a créé une table `referentiel.sous_sections` mais NE DOIT PAS l'utiliser.
+
+## ARCHITECTURE CORRECTE
+
+Les sous-sections sont DÉJÀ dans `produits_master.sous_section` (colonne TEXT).
+Pas besoin de table normalisée, on extrait dynamiquement les valeurs distinctes.
+┌──────────────────────────────────────────────────┐
+│ referentiel.produits_master                      │
+├──────────────────────────────────────────────────┤
+│ id | nom              | categorie    | sous_section    │
+│ 50 | ARRACHE CLOUS    | Outillage... | Outils manuels │
+│ 51 | BROUETTE         | Outillage... | Outils manuels │
+│ 52 | BURIN            | Outillage... | Outils manuels │
+│ 53 | Cisaille...      | Outillage... | Outils manuels │
+│  1 | Tubes PVC        | Plomberie... | Tubes          │
+│  2 | Vannes et Racc.. | Plomberie... | Raccords       │
+└──────────────────────────────────────────────────┘
+↑
+│ Extraire DISTINCT sous_section par categorie
+│
+┌────────────────────────────────────────┐
+│ Dropdown dynamique :                   │
+│ - "Tous" (par défaut)                  │
+│ - "Outils manuels" (pour Outillage)    │
+│ - "Tubes" (pour Plomberie)             │
+│ - "Raccords" (pour Plomberie)          │
+└────────────────────────────────────────┘
+
+## ACTIONS IMMÉDIATES
+
+### 1. SUPPRIMER/IGNORER LA TABLE sous_sections
+
+⚠️ NE PAS l'utiliser du tout.
+
+Si elle existe déjà, l'ignorer ou la supprimer :
+
+```sql
+-- Optionnel : supprimer si elle est vide ou avec données test
+DROP TABLE IF EXISTS referentiel.sous_sections CASCADE;
+Ou simplement l'ignorer dans le code.
+2. ROUTE GET SOUS-SECTIONS (VERSION DYNAMIQUE)
+File: server/routes.ts
+REMPLACER toute route GET /api/referentiel/sous-sections par :
+// GET /api/referentiel/sous-sections
+// Retourne les sous-sections distinctes depuis produits_master
+app.get("/api/referentiel/sous-sections", async (req, res) => {
+  try {
+    const { categorie } = req.query;
+    
+    let query = db
+      .selectDistinct({
+        nom: produitsMaster.sousSection,
+        categorie: produitsMaster.categorie,
+      })
+      .from(produitsMaster)
+      .where(isNotNull(produitsMaster.sousSection))
+      .orderBy(asc(produitsMaster.categorie), asc(produitsMaster.sousSection));
+    
+    // Filtrer par catégorie si fourni
+    if (categorie && categorie !== "Toutes catégories") {
+      query = query.where(eq(produitsMaster.categorie, categorie));
+    }
+    
+    const rows = await query;
+    
+    // Filtrer les valeurs vides côté JS (au cas où)
+    const filtered = rows
+      .filter(r => r.nom && r.nom.trim() !== "")
+      .map(r => ({
+        id: `${r.categorie}_${r.nom}`,  // ID virtuel pour React keys
+        nom: r.nom,
+        categorie: r.categorie,
+      }));
+    
+    res.json(filtered);
+  } catch (error: any) {
+    console.error("Erreur récupération sous-sections:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+Import manquant :
+import { isNotNull, asc } from "drizzle-orm";
+3. ROUTE POST SOUS-SECTION (NE FAIT RIEN)
+File: server/routes.ts
+La route POST sous-section devient INUTILE car on ne stocke plus dans une table séparée.
+OPTION 1 : Supprimer complètement la route POST /api/referentiel/sous-sections
+OPTION 2 : La garder mais retourner succès vide (pour compatibilité frontend) :
+// POST /api/referentiel/sous-sections
+// Ne fait rien car sous-sections gérées automatiquement via produits
+app.post("/api/referentiel/sous-sections", async (req, res) => {
+  // Les sous-sections sont créées automatiquement quand on crée un produit
+  // Cette route existe pour compatibilité mais ne fait rien
+  res.json({ 
+    message: "Les sous-sections sont gérées automatiquement via les produits",
+    success: true 
+  });
+});
+4. DIALOG CRÉATION CATÉGORIE (SIMPLIFIER)
+File: client/src/pages/categories.tsx
+La création de catégorie ne doit PLUS créer de sous-section.
+REMPLACER la mutation createCategorieMutation par :
+const createCategorieMutation = useMutation({
+  mutationFn: async (data: { nom: string; sousSection?: string }) => {
+    // Créer seulement la catégorie
+    const categorie = await apiRequest("POST", "/api/referentiel/categories", {
+      nom: data.nom,
+    });
+    
+    // La sous-section sera créée automatiquement quand on créera des produits
+    // Pas besoin d'appel API
+    
+    return categorie;
+  },
+  onSuccess: () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/referentiel/categories"] });
+    toast({ title: "Catégorie créée avec succès" });
+    setIsAddDialogOpen(false);
+    setNewCategorie({ nom: "", sousSection: "" });
+  },
+  onError: (error: any) => {
+    toast({ 
+      title: "Erreur", 
+      description: error.message || "Impossible de créer la catégorie", 
+      variant: "destructive" 
+    });
+  },
+});
+Et SIMPLIFIER le Dialog :
+<Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+  <DialogContent>
+    <DialogHeader>
+      <DialogTitle>Nouvelle catégorie</DialogTitle>
+      <DialogDescription>
+        Créez une nouvelle catégorie de produits.
+      </DialogDescription>
+    </DialogHeader>
+    
+    <div className="space-y-4 py-4">
+      <div>
+        <Label htmlFor="nom-categorie">Nom de la catégorie *</Label>
+        <Input
+          id="nom-categorie"
+          placeholder="Ex: Plomberie et Irrigation"
+          value={newCategorie.nom}
+          onChange={(e) => setNewCategorie({ ...newCategorie, nom: e.target.value })}
+          autoFocus
+        />
+      </div>
+      
+      {/* RETIRER COMPLÈTEMENT LE CHAMP SOUS-SECTION */}
+    </div>
+    
+    <DialogFooter>
+      <Button 
+        variant="outline" 
+        onClick={() => {
+          setIsAddDialogOpen(false);
+          setNewCategorie({ nom: "", sousSection: "" });
+        }}
+      >
+        Annuler
+      </Button>
+      <Button 
+        onClick={() => createCategorieMutation.mutate(newCategorie)}
+        disabled={!newCategorie.nom.trim() || createCategorieMutation.isPending}
+      >
+        {createCategorieMutation.isPending ? "Création..." : "Créer"}
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
+5. FRONTEND : Charger sous-sections dynamiques
+File: client/src/pages/produits.tsx
+REMPLACER la query sous-sections par :
+const { data: sousSections = [] } = useQuery({
+  queryKey: ["/api/referentiel/sous-sections", selectedCategorie],
+  queryFn: () => {
+    const params = selectedCategorie && selectedCategorie !== "Toutes catégories"
+      ? `?categorie=${encodeURIComponent(selectedCategorie)}`
+      : "";
+    return apiRequest("GET", `/api/referentiel/sous-sections${params}`);
+  },
+  enabled: !!selectedCategorie && selectedCategorie !== "Toutes catégories",
+});
+6. HELPER getSousSectionsForCategorie (SIMPLIFIER)
+File: client/src/pages/produits.tsx
+REMPLACER par :
+const getSousSectionsForCategorie = (categorieNom: string) => {
+  // Les sous-sections sont déjà filtrées par la query
+  return sousSections || [];
+};
+Ou carrément utiliser directement sousSections sans helper.
+7. SCHÉMA DRIZZLE (NETTOYER)
+File: shared/schema-referentiel.ts
+SUPPRIMER toute définition de sousSections :
+// SUPPRIMER CES LIGNES :
+export const sousSections = referentielSchema.table("sous_sections", {
+  id: serial("id").primaryKey(),
+  nom: text("nom").notNull(),
+  categorieId: integer("categorie_id").notNull(),
+  dateCreation: timestamp("date_creation").notNull().defaultNow(),
+});
+
+export const sousSectionsRelations = relations(sousSections, ({ one }) => ({
+  categorie: one(categories, {
+    fields: [sousSections.categorieId],
+    references: [categories.id],
+  }),
+}));
+Garder UNIQUEMENT produitsMaster qui a déjà la colonne sousSection en TEXT.
+RÉSULTAT FINAL
+Comportement attendu :
+Page Catégories : Bouton "Ajouter catégorie" crée SEULEMENT la catégorie (pas de sous-section)
+Page Produits - Création :
+Champ "Sous-section" = Select
+Options = Valeurs distinctes de produits_master.sous_section pour la catégorie sélectionnée
+Quand on crée un produit avec nouvelle sous-section, elle apparaît automatiquement dans la liste
+Page Produits - Tableau :
+Colonne "Sous-section" éditable
+Dropdown avec valeurs existantes pour cette catégorie
+Possibilité de saisir nouvelle valeur (texte libre comme actuellement)
+Pas de table sous_sections : Tout est géré via la colonne TEXT
+TESTS DE VALIDATION
+ Table sous_sections ignorée ou supprimée
+ GET /api/referentiel/sous-sections retourne valeurs depuis produits_master
+ Filtrer par catégorie fonctionne (query param)
+ Créer catégorie ne tente pas de créer sous-section
+ Créer produit avec nouvelle sous-section → elle apparaît dans dropdowns
+ Pas d'erreur "table sous_sections not found"
+ Dropdown sous-section affiche valeurs réelles des produits existants
+SI TABLE DÉJÀ CRÉÉE
+Exécuter dans console PostgreSQL :
+-- Vérifier si elle a des données importantes
+SELECT * FROM referentiel.sous_sections;
+
+-- Si vide ou données test, supprimer
+DROP TABLE IF EXISTS referentiel.sous_sections CASCADE;
+ROLLBACK CODE
+Supprimer/commenter :
+✂️ Tout import de sousSections dans routes
+✂️ Toute référence à table sous_sections
+✂️ Route POST sous-section (ou la vider)
+✂️ Champ sous-section dans dialog création catégorie
+✂️ Appel API création sous-section depuis frontend
+Garder :
+✅ Colonne produits_master.sous_section (TEXT)
+✅ Route GET avec DISTINCT sur cette colonne
+✅ Selects frontend qui utilisent ces valeurs
+
+---
+
+## ✅ ARCHITECTURE FINALE SIMPLIFIÉE
+produits_master
+├─ sous_section (TEXT) ← SOURCE UNIQUE
+│
+└─ Query DISTINCT → Dropdown dynamique
+PAS DE TABLE sous_sections ❌
+
+**C'est beaucoup plus simple et ça utilise les données existantes !** 🎯
