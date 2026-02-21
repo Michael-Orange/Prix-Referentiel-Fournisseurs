@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
   Sidebar,
@@ -19,9 +20,14 @@ import {
   History,
   LogOut,
   User,
-  Shield
+  Shield,
+  ExternalLink,
+  Loader2,
+  Warehouse
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 import type { AuthUser } from "@/pages/login";
 
 const menuItems = [
@@ -59,6 +65,25 @@ interface AppSidebarProps {
 
 export function AppSidebar({ user, onLogout }: AppSidebarProps) {
   const [location] = useLocation();
+  const [isLoadingSSO, setIsLoadingSSO] = useState(false);
+  const { toast } = useToast();
+
+  async function handleStockAccess() {
+    setIsLoadingSSO(true);
+    try {
+      const response = await apiRequest("GET", "/api/auth/sso-token");
+      const data = await response.json();
+      window.open(data.url, "_blank");
+    } catch (error: any) {
+      toast({
+        title: "Erreur",
+        description: error.message || "Impossible de générer le lien SSO",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingSSO(false);
+    }
+  }
 
   return (
     <Sidebar>
@@ -114,6 +139,30 @@ export function AppSidebar({ user, onLogout }: AppSidebarProps) {
                       <Shield className="h-4 w-4" />
                       <span>Utilisateurs</span>
                     </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+        {user.peutAccesStock && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Applications</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    onClick={handleStockAccess}
+                    disabled={isLoadingSSO}
+                    data-testid="nav-stock-sso"
+                  >
+                    {isLoadingSSO ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Warehouse className="h-4 w-4" />
+                    )}
+                    <span>Gestion Stock</span>
+                    <ExternalLink className="h-3 w-3 ml-auto text-muted-foreground" />
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               </SidebarMenu>

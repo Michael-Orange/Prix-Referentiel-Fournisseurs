@@ -94,6 +94,7 @@ Preferred communication style: Simple, everyday language.
 - `GET/POST /api/admin/users` - Admin user management (requireAdmin)
 - `PATCH /api/admin/users/:id` - Update user (requireAdmin)
 - `GET /api/admin/users/:id/password` - Reveal decrypted password (requireAdmin)
+- `GET /api/auth/sso-token` - Generate 30s SSO token for Stock app redirect (requireAuth + stock access check)
 
 ### Price Calculation Logic (shared/schema.ts)
 ```
@@ -131,6 +132,7 @@ BRS 5%:   prixTtc = null, prixBrs = prixHt / 0.95
   - 4 seeded users: michael (admin), cheikh (stock only), fatou (all), marine (all)
 - **Admin Users page**: /utilisateurs route (admin only) with user table, create/edit dialogs, password reveal, activate/deactivate toggle
 - **Per-app permissions enforcement**: Fournisseurs and prix endpoints require "prix" app access; reseed requires admin
+- **SSO to Stock app**: Sidebar "Gestion Stock" button (visible to users with stock access) generates a 30s JWT token and opens https://stock-filtreplante.replit.app/sso?token=xxx in new tab. Server-side authorization check enforces stock access. Stock app needs to implement /sso route to accept and validate the token.
 
 ### Previous Changes (2026-02-21)
 - Sous-sections: dynamic product sub-categorization via produits_master.sous_section TEXT column

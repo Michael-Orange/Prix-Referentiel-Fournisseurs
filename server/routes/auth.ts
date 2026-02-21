@@ -1,9 +1,12 @@
 import express from "express";
+import jwt from "jsonwebtoken";
 import { db } from "../db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { generateToken, verifyToken } from "../middleware/auth";
+import { generateToken, verifyToken, requireAuth, type JWTPayload } from "../middleware/auth";
 import { decryptPassword } from "../utils/password-crypto";
+
+const JWT_SECRET = process.env.JWT_SECRET || "fallback-jwt";
 
 const router = express.Router();
 
@@ -132,6 +135,36 @@ router.get("/usernames", async (_req, res) => {
     res.json({ usernames: prixUsers.map((u) => u.username) });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+router.get("/sso-token", requireAuth, (req, res) => {
+  const userCheck = (req as any).user as JWTPayload;
+  if (!userCheck.apps.includes("stock") && userCheck.role !== "admin") {
+    return res.status(403).json({ error: "Accès à Stock requis" });
+  }
+  try {
+    const user = (req as any).user as JWTPayload;
+
+    const ssoToken = jwt.sign(
+      {
+        userId: user.userId,
+        username: user.username,
+        nom: user.nom,
+        role: user.role,
+        apps: user.apps,
+        type: "sso",
+      },
+      JWT_SECRET,
+      { expiresIn: "30s" }
+    );
+
+    const stockUrl = `https://stock-filtreplante.replit.app/sso?token=${ssoToken}`;
+
+    res.json({ url: stockUrl });
+  } catch (error: any) {
+    console.error("Erreur génération token SSO:", error);
+    res.status(500).json({ error: "Erreur serveur" });
   }
 });
 
