@@ -167,6 +167,7 @@ export type ProduitWithPrixDefaut = ProduitMaster & {
     regimeFiscal: string;
   } | null;
   prixDateModification?: Date | string | null;
+  prixModifiePar?: string | null;
 };
 
 export type ProduitDetail = ProduitMaster & {

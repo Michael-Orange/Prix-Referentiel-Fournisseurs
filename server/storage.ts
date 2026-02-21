@@ -237,6 +237,7 @@ export class DatabaseStorage implements IStorage {
         regimeFiscal: prixFournisseurs.regimeFiscal,
         prixDateModification: prixFournisseurs.dateModification,
         prixDateCreation: prixFournisseurs.dateCreation,
+        prixCreePar: prixFournisseurs.creePar,
         fournisseurId: fournisseurs.id,
         fournisseurNom: fournisseurs.nom,
       })
@@ -279,6 +280,7 @@ export class DatabaseStorage implements IStorage {
         regimeFiscal: row.regimeFiscal!,
       } : null,
       prixDateModification: row.prixDateModification || row.prixDateCreation || row.dateModification || row.dateCreation,
+      prixModifiePar: row.prixCreePar || null,
     }));
 
     if (filters?.avecPrix === true) {

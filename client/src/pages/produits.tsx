@@ -413,9 +413,9 @@ export default function Produits() {
           aVal = a.prixDateModification ? new Date(a.prixDateModification).getTime() : 0;
           bVal = b.prixDateModification ? new Date(b.prixDateModification).getTime() : 0;
           break;
-        case 'creePar':
-          aVal = (a.creePar || '').toLowerCase();
-          bVal = (b.creePar || '').toLowerCase();
+        case 'modifiePar':
+          aVal = (a.prixModifiePar || a.creePar || '').toLowerCase();
+          bVal = (b.prixModifiePar || b.creePar || '').toLowerCase();
           break;
         default:
           return 0;
@@ -805,16 +805,16 @@ export default function Produits() {
       ),
     },
     {
-      key: "creePar",
+      key: "modifiePar",
       header: (
-        <div className="flex items-center gap-1 cursor-pointer select-none" onClick={() => handleSort('creePar')} data-testid="sort-creePar">
-          <span>Créé par</span>
-          <SortIcon columnKey="creePar" />
+        <div className="flex items-center gap-1 cursor-pointer select-none" onClick={() => handleSort('modifiePar')} data-testid="sort-modifiePar">
+          <span>Modifié par</span>
+          <SortIcon columnKey="modifiePar" />
         </div>
       ),
       render: (p: ProduitWithPrixDefaut) => (
-        <span className="text-sm text-muted-foreground" data-testid={`text-creepar-${p.id}`}>
-          {p.creePar || '-'}
+        <span className="text-sm text-muted-foreground" data-testid={`text-modifiepar-${p.id}`}>
+          {p.prixModifiePar || p.creePar || '-'}
         </span>
       ),
     },
@@ -1296,20 +1296,29 @@ export default function Produits() {
                 <div><span className="text-muted-foreground">Source:</span><p className="font-medium">{selectedProduct.sourceApp}</p></div>
               </div>
 
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="stockable-toggle"
-                  checked={selectedProduct.estStockable}
-                  disabled={!selectedProduct.actif}
-                  onCheckedChange={(checked) => {
-                    toggleStockableMutation.mutate({ id: selectedProduct.id, estStockable: !!checked });
-                  }}
-                  data-testid="checkbox-stockable"
-                />
-                <Label htmlFor="stockable-toggle" className={`cursor-pointer text-sm ${!selectedProduct.actif ? 'text-muted-foreground' : ''}`}>
-                  Produit stockable {!selectedProduct.actif && "(inactif)"}
-                </Label>
-              </div>
+              {(() => {
+                const catDetail = categoriesList.find(c => c.nom === selectedProduct.categorie);
+                const categorieNonStockable = catDetail && !catDetail.estStockable;
+                const isDisabled = !selectedProduct.actif || !!categorieNonStockable;
+                return (
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="stockable-toggle"
+                      checked={selectedProduct.estStockable}
+                      disabled={isDisabled}
+                      onCheckedChange={(checked) => {
+                        toggleStockableMutation.mutate({ id: selectedProduct.id, estStockable: !!checked });
+                      }}
+                      data-testid="checkbox-stockable"
+                    />
+                    <Label htmlFor="stockable-toggle" className={`text-sm ${isDisabled ? 'text-muted-foreground cursor-not-allowed' : 'cursor-pointer'}`}>
+                      Produit stockable
+                      {categorieNonStockable && <span className="text-xs text-orange-500 ml-1">(catégorie non stockable)</span>}
+                      {!selectedProduct.actif && <span className="text-xs ml-1">(inactif)</span>}
+                    </Label>
+                  </div>
+                );
+              })()}
 
               <div className="pt-3 border-t" data-testid="section-audit-info">
                 <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
