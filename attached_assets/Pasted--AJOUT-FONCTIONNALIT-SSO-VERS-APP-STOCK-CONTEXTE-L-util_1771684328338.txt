@@ -1,0 +1,133 @@
+# AJOUT FONCTIONNALITÉ SSO VERS APP STOCK
+
+## CONTEXTE
+
+L'utilisateur connecté sur Prix-Referentiel doit pouvoir accéder à l'app Stock (https://stock-filtreplante.replit.app) sans re-saisir ses identifiants.
+
+**Problème technique** : Les cookies JWT ne sont pas partagés entre sous-domaines différents (prix-referentiel.replit.app vs stock-filtreplante.replit.app).
+
+**Solution** : Single Sign-On (SSO) via token temporaire dans URL.
+
+---
+
+## IMPLÉMENTATION
+
+### PARTIE 1 : ENDPOINT SSO (BACKEND)
+
+File: server/routes/auth.ts
+
+AJOUTER cette route à la fin du fichier (avant `export default router`) :
+
+```typescript
+// GET /api/auth/sso-token - Génère token SSO temporaire
+router.get("/sso-token", requireAuth, (req, res) => {
+  try {
+    const user = (req as any).user as JWTPayload;
+    
+    // Générer token SSO très court (30 secondes)
+    const ssoToken = jwt.sign(
+      {
+        userId: user.userId,
+        username: user.username,
+        nom: user.nom,
+        role: user.role,
+        apps: user.apps,
+        type: 'sso', // Flag pour identifier token SSO
+      },
+      JWT_SECRET,
+      { expiresIn: '30s' } // ← Expire en 30 secondes
+    );
+    
+    // Retourner URL complète avec token
+    const stockUrl = `https://stock-filtreplante.replit.app/sso?token=${ssoToken}`;
+    
+    res.json({ url: stockUrl });
+  } catch (error: any) {
+    console.error("Erreur génération token SSO:", error);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+⚠️ Important : Ajouter import jwt en haut si pas déjà présent :
+import jwt from "jsonwebtoken";
+PARTIE 2 : LIEN SIDEBAR (FRONTEND)
+File: client/src/components/Sidebar.tsx (ou ton composant navigation)
+AJOUTER ce code là où tu veux afficher le lien :
+import { useAuth } from "@/contexts/AuthContext";
+import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/apiRequest";
+import { ExternalLink, Loader2 } from "lucide-react";
+
+export function Sidebar() {
+  const { user, canAccessApp } = useAuth();
+  const [isLoadingSSO, setIsLoadingSSO] = useState(false);
+  const { toast } = useToast();
+  
+  async function handleStockAccess() {
+    if (!canAccessApp('stock')) {
+      toast({
+        title: "Accès refusé",
+        description: "Vous n'avez pas accès à l'application Stock",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    setIsLoadingSSO(true);
+    
+    try {
+      const response = await apiRequest("GET", "/api/auth/sso-token");
+      
+      // Ouvrir l'app Stock avec token SSO
+      window.open(response.url, '_blank');
+    } catch (error: any) {
+      toast({
+        title: "Erreur",
+        description: error.message || "Impossible de générer le lien SSO",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingSSO(false);
+    }
+  }
+  
+  return (
+    <div className="sidebar">
+      {/* Tes liens existants */}
+      <Link href="/">Produits</Link>
+      <Link href="/categories">Catégories</Link>
+      <Link href="/fournisseurs">Fournisseurs</Link>
+      
+      {/* Lien vers Stock avec SSO */}
+      {canAccessApp('stock') && (
+        <button
+          onClick={handleStockAccess}
+          disabled={isLoadingSSO}
+          className="flex items-center gap-2 w-full px-4 py-2 text-left hover:bg-gray-100 rounded"
+        >
+          {isLoadingSSO ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <ExternalLink className="h-4 w-4" />
+          )}
+          <span>Gestion Stock</span>
+        </button>
+      )}
+      
+      {/* Tes autres liens */}
+      {user?.role === "admin" && (
+        <Link href="/users">Utilisateurs</Link>
+      )}
+    </div>
+  );
+}
+Adaptation selon ton design :
+Si tu utilises un autre composant (Navbar, Header), adapte le code
+Style avec tes classes CSS/Tailwind
+Icône optionnelle (ExternalLink de lucide-react)
+TESTS
+Après implémentation :
+ Backend : GET /api/auth/sso-token avec auth → Retourne { url: "https://stock..." }
+ Frontend : Clic bouton "Gestion Stock" → Nouvelle fenêtre s'ouvre
+ Stock : Utilisateur connecté automatiquement (on va coder ça côté Stock après)
+ Token expire : Après 30 secondes, token SSO ne fonctionne plus (normal)
