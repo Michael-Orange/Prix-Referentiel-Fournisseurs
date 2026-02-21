@@ -38,7 +38,7 @@ import { formatFCFA, formatDate, formatDateTime } from "@/lib/utils";
 import {
   Plus,
   Package,
-  Eye,
+  Pencil,
   DollarSign,
   History,
   Star,
@@ -52,6 +52,8 @@ import {
   ChevronsUpDown,
   XCircle,
   CheckCircle,
+  Ban,
+  RotateCcw,
 } from "lucide-react";
 import type {
   ProduitWithPrixDefaut,
@@ -95,6 +97,23 @@ export default function Produits() {
     direction: 'asc' | 'desc' | null;
   }>({ key: '', direction: null });
 
+  const [editingRow, setEditingRow] = useState<number | null>(null);
+  const [editForm, setEditForm] = useState<{
+    produitId: number;
+    nom: string;
+    estStockable: boolean;
+    fournisseurId: number | null;
+    prixHt: number;
+    regimeFiscal: string;
+  }>({
+    produitId: 0,
+    nom: "",
+    estStockable: false,
+    fournisseurId: null,
+    prixHt: 0,
+    regimeFiscal: "tva_18",
+  });
+
   const [productForm, setProductForm] = useState({
     nom: "",
     categorie: "",
@@ -125,7 +144,7 @@ export default function Produits() {
   const { data: categoriesData } = useQuery<{ categories: Categorie[] }>({
     queryKey: ["/api/referentiel/categories"],
   });
-  const categories = categoriesData?.categories ?? [];
+  const categoriesList = categoriesData?.categories ?? [];
 
   const { data: fournisseurs = [] } = useQuery<FournisseurWithStats[]>({
     queryKey: ["/api/fournisseurs"],
@@ -243,6 +262,44 @@ export default function Produits() {
     },
   });
 
+  const updateProductPriceMutation = useMutation({
+    mutationFn: async (data: {
+      produitId: number;
+      produitNom?: string;
+      estStockable?: boolean;
+      fournisseurId?: number;
+      prixHt?: number;
+      regimeFiscal?: string;
+    }) => {
+      if (data.produitNom !== undefined || data.estStockable !== undefined) {
+        const updateData: any = {};
+        if (data.produitNom !== undefined) updateData.nom = data.produitNom;
+        if (data.estStockable !== undefined) updateData.estStockable = data.estStockable;
+        await apiRequest("PATCH", `/api/referentiel/produits/${data.produitId}`, updateData);
+      }
+      if (data.fournisseurId && data.prixHt && data.regimeFiscal) {
+        return apiRequest("POST", `/api/prix/produits/${data.produitId}/fournisseurs`, {
+          fournisseur_id: data.fournisseurId,
+          prix_ht: data.prixHt,
+          regime_fiscal: data.regimeFiscal,
+          est_fournisseur_defaut: true,
+        });
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/referentiel/produits"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      if (selectedProductId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/referentiel/produits", selectedProductId] });
+      }
+      toast({ title: "Modifications enregistrées" });
+      setEditingRow(null);
+    },
+    onError: () => {
+      toast({ title: "Erreur", description: "Impossible d'enregistrer les modifications", variant: "destructive" });
+    },
+  });
+
   const checkDuplicates = async (nom: string) => {
     if (nom.length < 3) {
       setDuplicates([]);
@@ -298,9 +355,9 @@ export default function Produits() {
           aVal = a.fournisseurDefaut?.prixHt ?? 0;
           bVal = b.fournisseurDefaut?.prixHt ?? 0;
           break;
-        case 'prixFinal':
-          aVal = a.fournisseurDefaut ? (a.fournisseurDefaut.prixTtc ?? a.fournisseurDefaut.prixBrs ?? a.fournisseurDefaut.prixHt) : 0;
-          bVal = b.fournisseurDefaut ? (b.fournisseurDefaut.prixTtc ?? b.fournisseurDefaut.prixBrs ?? b.fournisseurDefaut.prixHt) : 0;
+        case 'regimeFiscal':
+          aVal = a.fournisseurDefaut?.regimeFiscal || '';
+          bVal = b.fournisseurDefaut?.regimeFiscal || '';
           break;
         case 'derniereMAJ':
           aVal = a.prixDateModification ? new Date(a.prixDateModification).getTime() : 0;
@@ -332,21 +389,132 @@ export default function Produits() {
     return <ChevronsUpDown className="h-4 w-4 text-muted-foreground" />;
   };
 
+  const startEditing = (produit: ProduitWithPrixDefaut) => {
+    setEditingRow(produit.id);
+    setEditForm({
+      produitId: produit.id,
+      nom: produit.nom,
+      estStockable: produit.estStockable,
+      fournisseurId: produit.fournisseurDefaut?.id || null,
+      prixHt: produit.fournisseurDefaut?.prixHt || 0,
+      regimeFiscal: produit.fournisseurDefaut?.regimeFiscal || "tva_18",
+    });
+  };
+
+  const cancelEditing = () => {
+    setEditingRow(null);
+  };
+
+  const saveEditing = () => {
+    const changes: any = { produitId: editForm.produitId };
+    const originalProduct = sortedProduits.find(p => p.id === editForm.produitId);
+    if (!originalProduct) return;
+
+    if (editForm.nom !== originalProduct.nom) {
+      changes.produitNom = editForm.nom;
+    }
+    if (editForm.estStockable !== originalProduct.estStockable) {
+      changes.estStockable = editForm.estStockable;
+    }
+    if (editForm.fournisseurId && editForm.prixHt > 0) {
+      const origFourn = originalProduct.fournisseurDefaut?.id;
+      const origPrix = originalProduct.fournisseurDefaut?.prixHt;
+      const origRegime = originalProduct.fournisseurDefaut?.regimeFiscal;
+      if (
+        editForm.fournisseurId !== origFourn ||
+        editForm.prixHt !== origPrix ||
+        editForm.regimeFiscal !== origRegime
+      ) {
+        changes.fournisseurId = editForm.fournisseurId;
+        changes.prixHt = editForm.prixHt;
+        changes.regimeFiscal = editForm.regimeFiscal;
+      }
+    }
+
+    if (Object.keys(changes).length === 1) {
+      setEditingRow(null);
+      return;
+    }
+
+    updateProductPriceMutation.mutate(changes);
+  };
+
   const columns = [
     {
       key: "nom",
-      header: (<div className="flex items-center gap-1 cursor-pointer select-none" onClick={() => handleSort('nom')} data-testid="sort-nom"><span>Produit</span><SortIcon columnKey="nom" /></div>),
-      render: (p: ProduitWithPrixDefaut) => (
-        <div className="flex items-center gap-2">
-          <span className={`font-medium ${!p.actif ? 'text-muted-foreground line-through' : ''}`} data-testid={`text-produit-${p.id}`}>{p.nom}</span>
-          {!p.actif && <Badge variant="secondary" className="text-xs bg-gray-200 text-gray-600" data-testid={`badge-inactif-${p.id}`}>Inactif</Badge>}
-          {p.estStockable && <Badge variant="outline" className="text-xs">Stockable</Badge>}
+      header: (
+        <div className="flex items-center gap-1 cursor-pointer select-none" onClick={() => handleSort('nom')} data-testid="sort-nom">
+          <span>Produit</span>
+          <SortIcon columnKey="nom" />
         </div>
       ),
+      render: (p: ProduitWithPrixDefaut) => {
+        const isEditing = editingRow === p.id;
+        if (isEditing) {
+          return (
+            <Input
+              value={editForm.nom}
+              onChange={(e) => setEditForm({ ...editForm, nom: e.target.value })}
+              className="h-8 text-sm"
+              autoFocus
+              data-testid={`input-edit-nom-${p.id}`}
+            />
+          );
+        }
+        return (
+          <div className="flex items-center gap-2">
+            <span
+              className={`font-medium ${!p.actif ? 'text-muted-foreground line-through' : ''}`}
+              data-testid={`text-produit-${p.id}`}
+              onDoubleClick={() => startEditing(p)}
+            >
+              {p.nom}
+            </span>
+            {!p.actif && <Badge variant="secondary" className="text-xs bg-gray-200 text-gray-600" data-testid={`badge-inactif-${p.id}`}>Inactif</Badge>}
+          </div>
+        );
+      },
+    },
+    {
+      key: "stockage",
+      header: "Stockage",
+      render: (p: ProduitWithPrixDefaut) => {
+        const isEditing = editingRow === p.id;
+        if (isEditing) {
+          return (
+            <Select
+              value={editForm.estStockable ? "oui" : "non"}
+              onValueChange={(v) => setEditForm({ ...editForm, estStockable: v === "oui" })}
+            >
+              <SelectTrigger className="h-8 text-sm w-[120px]" data-testid={`select-edit-stockage-${p.id}`}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="oui">Stockable</SelectItem>
+                <SelectItem value="non">Non</SelectItem>
+              </SelectContent>
+            </Select>
+          );
+        }
+        return (
+          <Badge
+            variant={p.estStockable ? "default" : "secondary"}
+            className={p.estStockable ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"}
+            onDoubleClick={() => startEditing(p)}
+          >
+            {p.estStockable ? "Stockable" : "Non"}
+          </Badge>
+        );
+      },
     },
     {
       key: "categorie",
-      header: (<div className="flex items-center gap-1 cursor-pointer select-none" onClick={() => handleSort('categorie')} data-testid="sort-categorie"><span>Catégorie</span><SortIcon columnKey="categorie" /></div>),
+      header: (
+        <div className="flex items-center gap-1 cursor-pointer select-none" onClick={() => handleSort('categorie')} data-testid="sort-categorie">
+          <span>Catégorie</span>
+          <SortIcon columnKey="categorie" />
+        </div>
+      ),
       render: (p: ProduitWithPrixDefaut) => (
         <span className="text-sm text-muted-foreground">{p.categorie}</span>
       ),
@@ -359,44 +527,104 @@ export default function Produits() {
     {
       key: "fournisseur",
       header: "Fournisseur défaut",
-      render: (p: ProduitWithPrixDefaut) => (
-        p.fournisseurDefaut ? (
-          <div className="text-sm">
+      render: (p: ProduitWithPrixDefaut) => {
+        const isEditing = editingRow === p.id;
+        if (isEditing) {
+          return (
+            <Select
+              value={editForm.fournisseurId?.toString() || ""}
+              onValueChange={(v) => setEditForm({ ...editForm, fournisseurId: parseInt(v) })}
+            >
+              <SelectTrigger className="h-8 text-sm" data-testid={`select-edit-fournisseur-${p.id}`}>
+                <SelectValue placeholder="Choisir..." />
+              </SelectTrigger>
+              <SelectContent>
+                {fournisseurs.map((f: any) => (
+                  <SelectItem key={f.id} value={f.id.toString()}>{f.nom}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          );
+        }
+        return p.fournisseurDefaut ? (
+          <div className="text-sm" onDoubleClick={() => startEditing(p)}>
             <span className="font-medium">{p.fournisseurDefaut.nom}</span>
-            <RegimeBadge regime={p.fournisseurDefaut.regimeFiscal} size="sm" className="ml-2" />
           </div>
-        ) : <span className="text-muted-foreground text-sm">-</span>
-      ),
+        ) : (
+          <span className="text-muted-foreground text-sm cursor-pointer" onDoubleClick={() => startEditing(p)}>-</span>
+        );
+      },
     },
     {
       key: "prixHT",
-      header: (<div className="flex items-center gap-1 cursor-pointer select-none justify-end" onClick={() => handleSort('prixHT')} data-testid="sort-prixHT"><span>Prix HT</span><SortIcon columnKey="prixHT" /></div>),
-      className: "text-right",
-      render: (p: ProduitWithPrixDefaut) => (
-        <span className="font-medium">
-          {p.fournisseurDefaut ? formatFCFA(p.fournisseurDefaut.prixHt) : "-"}
-        </span>
+      header: (
+        <div className="flex items-center gap-1 cursor-pointer select-none justify-end" onClick={() => handleSort('prixHT')} data-testid="sort-prixHT">
+          <span>Prix HT</span>
+          <SortIcon columnKey="prixHT" />
+        </div>
       ),
-    },
-    {
-      key: "prixFinal",
-      header: (<div className="flex items-center gap-1 cursor-pointer select-none justify-end" onClick={() => handleSort('prixFinal')} data-testid="sort-prixFinal"><span>Prix final</span><SortIcon columnKey="prixFinal" /></div>),
       className: "text-right",
       render: (p: ProduitWithPrixDefaut) => {
-        if (!p.fournisseurDefaut) return <span className="text-muted-foreground">-</span>;
-        const fd = p.fournisseurDefaut;
-        const val = fd.prixTtc ?? fd.prixBrs ?? fd.prixHt;
-        const label = fd.prixTtc ? "TTC" : fd.prixBrs ? "BRS" : "HT";
+        const isEditing = editingRow === p.id;
+        if (isEditing) {
+          return (
+            <Input
+              type="number"
+              min="0"
+              value={editForm.prixHt || ""}
+              onChange={(e) => setEditForm({ ...editForm, prixHt: parseFloat(e.target.value) || 0 })}
+              className="h-8 text-sm text-right"
+              data-testid={`input-edit-prix-${p.id}`}
+            />
+          );
+        }
         return (
-          <span className="text-sm text-muted-foreground">
-            {formatFCFA(val)} <span className="text-xs">({label})</span>
+          <span className="font-medium cursor-pointer" onDoubleClick={() => startEditing(p)}>
+            {p.fournisseurDefaut ? formatFCFA(p.fournisseurDefaut.prixHt) : "-"}
           </span>
         );
       },
     },
     {
+      key: "regimeFiscal",
+      header: "Régime fiscal",
+      className: "text-center",
+      render: (p: ProduitWithPrixDefaut) => {
+        const isEditing = editingRow === p.id;
+        if (isEditing) {
+          return (
+            <Select
+              value={editForm.regimeFiscal}
+              onValueChange={(v) => setEditForm({ ...editForm, regimeFiscal: v })}
+            >
+              <SelectTrigger className="h-8 text-sm" data-testid={`select-edit-regime-${p.id}`}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="tva_18">TVA 18%</SelectItem>
+                <SelectItem value="sans_tva">Sans TVA</SelectItem>
+                <SelectItem value="brs_5">BRS 5%</SelectItem>
+              </SelectContent>
+            </Select>
+          );
+        }
+        return p.fournisseurDefaut ? (
+          <div onDoubleClick={() => startEditing(p)}>
+            <RegimeBadge regime={p.fournisseurDefaut.regimeFiscal} size="sm" />
+          </div>
+        ) : (
+          <span className="text-muted-foreground text-sm">-</span>
+        );
+      },
+    },
+    {
       key: "derniereMAJ",
-      header: (<div className="flex items-center gap-1 cursor-pointer select-none" onClick={() => handleSort('derniereMAJ')} data-testid="sort-derniereMAJ"><span>Dernière MAJ</span><SortIcon columnKey="derniereMAJ" /></div>),
+      header: (
+        <div className="flex items-center gap-1 cursor-pointer select-none" onClick={() => handleSort('derniereMAJ')} data-testid="sort-derniereMAJ">
+          <span>Dernière MAJ</span>
+          <SortIcon columnKey="derniereMAJ" />
+        </div>
+      ),
       className: "min-w-[150px]",
       render: (p: ProduitWithPrixDefaut) => (
         <span className="text-sm text-muted-foreground" data-testid={`text-derniere-maj-${p.id}`}>
@@ -406,7 +634,12 @@ export default function Produits() {
     },
     {
       key: "creePar",
-      header: (<div className="flex items-center gap-1 cursor-pointer select-none" onClick={() => handleSort('creePar')} data-testid="sort-creePar"><span>Créé par</span><SortIcon columnKey="creePar" /></div>),
+      header: (
+        <div className="flex items-center gap-1 cursor-pointer select-none" onClick={() => handleSort('creePar')} data-testid="sort-creePar">
+          <span>Créé par</span>
+          <SortIcon columnKey="creePar" />
+        </div>
+      ),
       render: (p: ProduitWithPrixDefaut) => (
         <span className="text-sm text-muted-foreground" data-testid={`text-creepar-${p.id}`}>
           {p.creePar || '-'}
@@ -417,30 +650,84 @@ export default function Produits() {
       key: "actions",
       header: "",
       className: "text-right",
-      render: (p: ProduitWithPrixDefaut) => (
-        <div className="flex items-center justify-end gap-1">
-          <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); setSelectedProductId(p.id); }} data-testid={`button-view-${p.id}`}>
-            <Eye className="h-4 w-4" />
-          </Button>
-          {p.actif ? (
-            <Button variant="ghost" size="icon" className="text-red-500 hover:text-red-700" onClick={(e) => {
-              e.stopPropagation();
-              if (confirm("Désactiver ce produit ? Il sera masqué de la liste par défaut.")) {
-                desactiverMutation.mutate(p.id);
-              }
-            }} data-testid={`button-desactiver-${p.id}`}>
-              <XCircle className="h-4 w-4" />
+      render: (p: ProduitWithPrixDefaut) => {
+        const isEditing = editingRow === p.id;
+        if (isEditing) {
+          return (
+            <div className="flex items-center justify-end gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={saveEditing}
+                disabled={updateProductPriceMutation.isPending}
+                className="text-green-600 hover:text-green-700"
+                data-testid={`button-save-${p.id}`}
+              >
+                <CheckCircle className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={cancelEditing}
+                disabled={updateProductPriceMutation.isPending}
+                className="text-red-500 hover:text-red-700"
+                data-testid={`button-cancel-${p.id}`}
+              >
+                <XCircle className="h-4 w-4" />
+              </Button>
+            </div>
+          );
+        }
+        return (
+          <div className="flex items-center justify-end gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => startEditing(p)}
+              data-testid={`button-edit-${p.id}`}
+            >
+              <Pencil className="h-4 w-4" />
             </Button>
-          ) : (
-            <Button variant="ghost" size="icon" className="text-green-600 hover:text-green-800" onClick={(e) => {
-              e.stopPropagation();
-              reactiverMutation.mutate(p.id);
-            }} data-testid={`button-reactiver-${p.id}`}>
-              <CheckCircle className="h-4 w-4" />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={(e) => { e.stopPropagation(); setSelectedProductId(p.id); }}
+              data-testid={`button-view-${p.id}`}
+            >
+              <ExternalLink className="h-4 w-4" />
             </Button>
-          )}
-        </div>
-      ),
+            {p.actif ? (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-red-500 hover:text-red-700"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (confirm("Désactiver ce produit ? Il sera masqué de la liste par défaut.")) {
+                    desactiverMutation.mutate(p.id);
+                  }
+                }}
+                data-testid={`button-desactiver-${p.id}`}
+              >
+                <Ban className="h-4 w-4" />
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-green-600 hover:text-green-800"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  reactiverMutation.mutate(p.id);
+                }}
+                data-testid={`button-reactiver-${p.id}`}
+              >
+                <RotateCcw className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+        );
+      },
     },
   ];
 
@@ -461,7 +748,7 @@ export default function Produits() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Toutes catégories</SelectItem>
-            {categories.map((cat) => (
+            {categoriesList.map((cat) => (
               <SelectItem key={cat.id} value={cat.nom}>{cat.nom}</SelectItem>
             ))}
           </SelectContent>
@@ -503,7 +790,7 @@ export default function Produits() {
         emptyIcon={Package}
         emptyTitle="Aucun produit"
         emptyDescription="Aucun produit ne correspond aux filtres"
-        onRowClick={(p) => setSelectedProductId(p.id)}
+        onRowClick={(p) => { if (editingRow !== p.id) setSelectedProductId(p.id); }}
         rowClassName={(p) => !p.actif ? "opacity-60 bg-gray-50" : ""}
       />
 
@@ -583,7 +870,7 @@ export default function Produits() {
                     <SelectValue placeholder="Choisir..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {categories.map((cat) => (
+                    {categoriesList.map((cat) => (
                       <SelectItem key={cat.id} value={cat.nom}>{cat.nom}</SelectItem>
                     ))}
                   </SelectContent>
@@ -838,7 +1125,7 @@ export default function Produits() {
                       desactiverMutation.mutate(selectedProduct.id);
                     }
                   }} data-testid="button-desactiver-detail">
-                    <XCircle className="h-3.5 w-3.5 mr-1" />
+                    <Ban className="h-3.5 w-3.5 mr-1" />
                     Désactiver ce produit
                   </Button>
                 </div>

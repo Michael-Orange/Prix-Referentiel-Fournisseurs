@@ -1,0 +1,176 @@
+# AJOUT : COLONNE STOCKAGE ÉDITABLE
+
+## OBJECTIF ADDITIONNEL
+Ajouter colonne "Stockage" entre "Produit" et "Catégorie" avec édition inline (dropdown Stockable/Non)
+
+## MODIFICATION DANS client/src/pages/produits.tsx
+
+### 1. Ajouter champ dans editForm
+Dans l'état `editForm` (ajouté précédemment), ajouter le champ `estStockable` :
+
+```typescript
+const [editForm, setEditForm] = useState<{
+  produitId: number;
+  nom: string;
+  estStockable: boolean;  // ← AJOUTER CETTE LIGNE
+  fournisseurId: number | null;
+  prixHt: number;
+  regimeFiscal: string;
+}>({
+  produitId: 0,
+  nom: "",
+  estStockable: false,  // ← AJOUTER CETTE LIGNE
+  fournisseurId: null,
+  prixHt: 0,
+  regimeFiscal: "tva_18",
+});
+2. Mettre à jour fonction startEditing
+Dans la fonction startEditing(), ajouter l'initialisation de estStockable :
+const startEditing = (produit: ProduitWithPrixDefaut) => {
+  setEditingRow(produit.id);
+  setEditForm({
+    produitId: produit.id,
+    nom: produit.nom,
+    estStockable: produit.estStockable,  // ← AJOUTER CETTE LIGNE
+    fournisseurId: produit.fournisseurDefaut?.id || null,
+    prixHt: produit.fournisseurDefaut?.prixHt || 0,
+    regimeFiscal: produit.fournisseurDefaut?.regimeFiscal || "tva_18",
+  });
+};
+3. Mettre à jour fonction saveEditing
+Dans la fonction saveEditing(), détecter changement de stockage :
+const saveEditing = () => {
+  const changes: any = { produitId: editForm.produitId };
+  
+  const originalProduct = sortedProduits.find(p => p.id === editForm.produitId);
+  if (!originalProduct) return;
+  
+  // Changement nom
+  if (editForm.nom !== originalProduct.nom) {
+    changes.produitNom = editForm.nom;
+  }
+  
+  // ← AJOUTER CES LIGNES
+  // Changement stockage
+  if (editForm.estStockable !== originalProduct.estStockable) {
+    changes.estStockable = editForm.estStockable;
+  }
+  
+  // Changement prix/fournisseur
+  if (editForm.fournisseurId && editForm.prixHt > 0) {
+    const origFourn = originalProduct.fournisseurDefaut?.id;
+    const origPrix = originalProduct.fournisseurDefaut?.prixHt;
+    const origRegime = originalProduct.fournisseurDefaut?.regimeFiscal;
+    
+    if (
+      editForm.fournisseurId !== origFourn ||
+      editForm.prixHt !== origPrix ||
+      editForm.regimeFiscal !== origRegime
+    ) {
+      changes.fournisseurId = editForm.fournisseurId;
+      changes.prixHt = editForm.prixHt;
+      changes.regimeFiscal = editForm.regimeFiscal;
+    }
+  }
+  
+  if (Object.keys(changes).length === 1) {
+    setEditingRow(null);
+    return;
+  }
+  
+  updateProductPriceMutation.mutate(changes);
+};
+4. Mettre à jour mutation updateProductPriceMutation
+Modifier la mutation pour gérer le champ estStockable :
+const updateProductPriceMutation = useMutation({
+  mutationFn: async (data: { 
+    produitId: number; 
+    produitNom?: string;
+    estStockable?: boolean;  // ← AJOUTER CE TYPE
+    fournisseurId?: number; 
+    prixHt?: number; 
+    regimeFiscal?: string 
+  }) => {
+    // Changement nom ou stockage
+    if (data.produitNom !== undefined || data.estStockable !== undefined) {
+      const updateData: any = {};
+      if (data.produitNom !== undefined) updateData.nom = data.produitNom;
+      if (data.estStockable !== undefined) updateData.estStockable = data.estStockable;  // ← AJOUTER
+      
+      await apiRequest("PATCH", `/api/referentiel/produits/${data.produitId}`, updateData);
+    }
+    
+    // Changement prix/fournisseur
+    if (data.fournisseurId && data.prixHt && data.regimeFiscal) {
+      return apiRequest("POST", `/api/prix/produits/${data.produitId}/fournisseurs`, {
+        fournisseur_id: data.fournisseurId,
+        prix_ht: data.prixHt,
+        regime_fiscal: data.regimeFiscal,
+        est_fournisseur_defaut: true,
+      });
+    }
+  },
+  onSuccess: () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/referentiel/produits"] });
+    toast({ title: "Modifications enregistrées" });
+    setEditingRow(null);
+  },
+  onError: () => {
+    toast({ 
+      title: "Erreur", 
+      description: "Impossible d'enregistrer les modifications", 
+      variant: "destructive" 
+    });
+  },
+});
+5. Ajouter colonne Stockage dans le tableau
+INSÉRER cette colonne APRÈS la colonne "nom" et AVANT la colonne "categorie" dans le array columns :
+{
+  key: "stockage",
+  header: "Stockage",
+  render: (p: ProduitWithPrixDefaut) => {
+    const isEditing = editingRow === p.id;
+    
+    if (isEditing) {
+      return (
+        <Select 
+          value={editForm.estStockable ? "oui" : "non"} 
+          onValueChange={(v) => setEditForm({ ...editForm, estStockable: v === "oui" })}
+        >
+          <SelectTrigger className="h-8 text-sm w-[120px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="oui">Stockable</SelectItem>
+            <SelectItem value="non">Non</SelectItem>
+          </SelectContent>
+        </Select>
+      );
+    }
+    
+    return (
+      <Badge 
+        variant={p.estStockable ? "default" : "secondary"}
+        className={p.estStockable ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"}
+        onDoubleClick={() => startEditing(p)}
+      >
+        {p.estStockable ? "Stockable" : "Non"}
+      </Badge>
+    );
+  },
+},
+6. Retirer le badge "Stockable" de la colonne nom
+Dans la colonne "nom", SUPPRIMER cette ligne :
+{p.estStockable && <Badge variant="outline" className="text-xs">Stockable</Badge>}
+Car l'info sera maintenant dans la colonne dédiée.
+ORDRE FINAL DES COLONNES
+Produit (éditable)
+Stockage (éditable) ← NOUVELLE
+Catégorie (lecture seule)
+Unité (lecture seule)
+Fournisseur défaut (éditable)
+Prix HT (éditable)
+Régime fiscal (éditable)
+Dernière MAJ (lecture seule)
+Créé par (lecture seule)
+Actions (boutons)

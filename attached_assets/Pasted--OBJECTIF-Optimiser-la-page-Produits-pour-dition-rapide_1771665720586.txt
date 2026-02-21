@@ -1,0 +1,584 @@
+# OBJECTIF
+Optimiser la page Produits pour édition rapide inline et réduire drastiquement le temps de chargement
+
+# CONTEXTE
+Page /produits très lente (5-10s) avec tableau de produits + prix fournisseurs. 
+Actuellement : formulaire séparé pour éditer prix. Michael veut édition directe dans tableau.
+
+# PROBLÈME PERFORMANCE CRITIQUE
+File: server/storage.ts, méthode getProduits() ligne 126-172
+
+❌ CODE ACTUEL (N+1 queries) :
+```typescript
+const products = await db.select().from(produitsMaster)...;
+const result: ProduitWithPrixDefaut[] = [];
+
+for (const p of products) {  // ← BOUCLE !
+  const defautPrix = await db  // ← 1 requête par produit
+    .select(...)
+    .from(prixFournisseurs)
+    .innerJoin(fournisseurs, ...)
+    .where(eq(prixFournisseurs.produitMasterId, p.id))
+    .limit(1);
+  
+  result.push({ ...p, fournisseurDefaut: ... });
+}
+Impact : Pour 100 produits = 101 requêtes SQL (1 + 100)
+✅ CODE OPTIMISÉ (1 seule requête) :
+Remplacer ENTIÈREMENT la méthode getProduits() par :
+async getProduits(filters?: { 
+  categorie?: string; 
+  stockable?: boolean; 
+  actif?: boolean; 
+  includeInactifs?: boolean; 
+  avecPrix?: boolean 
+}): Promise<ProduitWithPrixDefaut[]> {
+  const conditions = [];
+  
+  if (filters?.includeInactifs) {
+    // Pas de filtre actif
+  } else if (filters?.actif !== undefined) {
+    conditions.push(eq(produitsMaster.actif, filters.actif));
+  } else {
+    conditions.push(eq(produitsMaster.actif, true));
+  }
+  
+  if (filters?.categorie) {
+    conditions.push(eq(produitsMaster.categorie, filters.categorie));
+  }
+  if (filters?.stockable !== undefined) {
+    conditions.push(eq(produitsMaster.estStockable, filters.stockable));
+  }
+
+  // ✅ UN SEUL LEFT JOIN au lieu de boucle
+  const rows = await db
+    .select({
+      // Champs produit
+      id: produitsMaster.id,
+      nom: produitsMaster.nom,
+      nomNormalise: produitsMaster.nomNormalise,
+      categorie: produitsMaster.categorie,
+      sousSection: produitsMaster.sousSection,
+      unite: produitsMaster.unite,
+      estStockable: produitsMaster.estStockable,
+      sourceApp: produitsMaster.sourceApp,
+      actif: produitsMaster.actif,
+      dateCreation: produitsMaster.dateCreation,
+      dateModification: produitsMaster.dateModification,
+      creePar: produitsMaster.creePar,
+      // Champs prix (peuvent être null)
+      prixId: prixFournisseurs.id,
+      prixHt: prixFournisseurs.prixHt,
+      prixTtc: prixFournisseurs.prixTtc,
+      prixBrs: prixFournisseurs.prixBrs,
+      regimeFiscal: prixFournisseurs.regimeFiscal,
+      prixDateModification: prixFournisseurs.dateModification,
+      prixDateCreation: prixFournisseurs.dateCreation,
+      fournisseurId: fournisseurs.id,
+      fournisseurNom: fournisseurs.nom,
+    })
+    .from(produitsMaster)
+    .leftJoin(
+      prixFournisseurs,
+      and(
+        eq(prixFournisseurs.produitMasterId, produitsMaster.id),
+        eq(prixFournisseurs.estFournisseurDefaut, true),
+        eq(prixFournisseurs.actif, true)
+      )
+    )
+    .leftJoin(fournisseurs, eq(prixFournisseurs.fournisseurId, fournisseurs.id))
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(asc(produitsMaster.categorie), asc(produitsMaster.nom));
+
+  // Mapper les résultats
+  const result: ProduitWithPrixDefaut[] = rows.map(row => ({
+    id: row.id,
+    nom: row.nom,
+    nomNormalise: row.nomNormalise,
+    categorie: row.categorie,
+    sousSection: row.sousSection,
+    unite: row.unite,
+    estStockable: row.estStockable,
+    sourceApp: row.sourceApp,
+    actif: row.actif,
+    dateCreation: row.dateCreation,
+    dateModification: row.dateModification,
+    creePar: row.creePar,
+    fournisseurDefaut: row.prixId ? {
+      id: row.fournisseurId!,
+      nom: row.fournisseurNom!,
+      prixHt: row.prixHt!,
+      prixTtc: row.prixTtc,
+      prixBrs: row.prixBrs,
+      regimeFiscal: row.regimeFiscal!,
+    } : null,
+    prixDateModification: row.prixDateModification || row.dateModification,
+  }));
+
+  // Filtres post-requête (optionnels)
+  if (filters?.avecPrix === true) {
+    return result.filter(p => p.fournisseurDefaut);
+  }
+  if (filters?.avecPrix === false) {
+    return result.filter(p => !p.fournisseurDefaut);
+  }
+
+  return result;
+}
+Gain attendu : 101 requêtes → 1 requête = 90-95% plus rapide
+MODIFICATIONS UI : ÉDITION INLINE
+File: client/src/pages/produits.tsx
+1. Ajouter état d'édition
+Après la ligne const [sortConfig, setSortConfig] = useState<{...}>({...}); (ligne ~80), ajouter :
+// État pour édition inline
+const [editingRow, setEditingRow] = useState<number | null>(null);
+const [editForm, setEditForm] = useState<{
+  produitId: number;
+  nom: string;
+  fournisseurId: number | null;
+  prixHt: number;
+  regimeFiscal: string;
+}>({
+  produitId: 0,
+  nom: "",
+  fournisseurId: null,
+  prixHt: 0,
+  regimeFiscal: "tva_18",
+});
+2. Ajouter mutation pour mise à jour rapide
+Après const addPriceMutation = useMutation({...}); (ligne ~150), ajouter :
+const updateProductPriceMutation = useMutation({
+  mutationFn: async (data: { 
+    produitId: number; 
+    produitNom?: string;
+    fournisseurId?: number; 
+    prixHt?: number; 
+    regimeFiscal?: string 
+  }) => {
+    // Si changement de nom produit
+    if (data.produitNom) {
+      await apiRequest("PATCH", `/api/referentiel/produits/${data.produitId}`, {
+        nom: data.produitNom,
+      });
+    }
+    
+    // Si changement de prix/fournisseur
+    if (data.fournisseurId && data.prixHt && data.regimeFiscal) {
+      return apiRequest("POST", `/api/prix/produits/${data.produitId}/fournisseurs`, {
+        fournisseur_id: data.fournisseurId,
+        prix_ht: data.prixHt,
+        regime_fiscal: data.regimeFiscal,
+        est_fournisseur_defaut: true,
+      });
+    }
+  },
+  onSuccess: () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/referentiel/produits"] });
+    toast({ title: "Modifications enregistrées" });
+    setEditingRow(null);
+  },
+  onError: () => {
+    toast({ 
+      title: "Erreur", 
+      description: "Impossible d'enregistrer les modifications", 
+      variant: "destructive" 
+    });
+  },
+});
+3. Fonctions helper pour édition
+Avant la définition de columns (ligne ~230), ajouter :
+const startEditing = (produit: ProduitWithPrixDefaut) => {
+  setEditingRow(produit.id);
+  setEditForm({
+    produitId: produit.id,
+    nom: produit.nom,
+    fournisseurId: produit.fournisseurDefaut?.id || null,
+    prixHt: produit.fournisseurDefaut?.prixHt || 0,
+    regimeFiscal: produit.fournisseurDefaut?.regimeFiscal || "tva_18",
+  });
+};
+
+const cancelEditing = () => {
+  setEditingRow(null);
+};
+
+const saveEditing = () => {
+  const changes: any = { produitId: editForm.produitId };
+  
+  const originalProduct = sortedProduits.find(p => p.id === editForm.produitId);
+  if (!originalProduct) return;
+  
+  // Détection changements
+  if (editForm.nom !== originalProduct.nom) {
+    changes.produitNom = editForm.nom;
+  }
+  
+  if (editForm.fournisseurId && editForm.prixHt > 0) {
+    const origFourn = originalProduct.fournisseurDefaut?.id;
+    const origPrix = originalProduct.fournisseurDefaut?.prixHt;
+    const origRegime = originalProduct.fournisseurDefaut?.regimeFiscal;
+    
+    if (
+      editForm.fournisseurId !== origFourn ||
+      editForm.prixHt !== origPrix ||
+      editForm.regimeFiscal !== origRegime
+    ) {
+      changes.fournisseurId = editForm.fournisseurId;
+      changes.prixHt = editForm.prixHt;
+      changes.regimeFiscal = editForm.regimeFiscal;
+    }
+  }
+  
+  // Si aucun changement
+  if (Object.keys(changes).length === 1) {
+    setEditingRow(null);
+    return;
+  }
+  
+  updateProductPriceMutation.mutate(changes);
+};
+4. Remplacer les colonnes du tableau
+Remplacer la définition de const columns = [...] (ligne ~230-340) par :
+const columns = [
+  {
+    key: "nom",
+    header: (
+      <div className="flex items-center gap-1 cursor-pointer select-none" onClick={() => handleSort('nom')} data-testid="sort-nom">
+        <span>Produit</span>
+        <SortIcon columnKey="nom" />
+      </div>
+    ),
+    render: (p: ProduitWithPrixDefaut) => {
+      const isEditing = editingRow === p.id;
+      
+      if (isEditing) {
+        return (
+          <Input
+            value={editForm.nom}
+            onChange={(e) => setEditForm({ ...editForm, nom: e.target.value })}
+            className="h-8 text-sm"
+            autoFocus
+          />
+        );
+      }
+      
+      return (
+        <div className="flex items-center gap-2">
+          <span 
+            className={`font-medium ${!p.actif ? 'text-muted-foreground line-through' : ''}`} 
+            data-testid={`text-produit-${p.id}`}
+            onDoubleClick={() => startEditing(p)}
+          >
+            {p.nom}
+          </span>
+          {!p.actif && <Badge variant="secondary" className="text-xs bg-gray-200 text-gray-600" data-testid={`badge-inactif-${p.id}`}>Inactif</Badge>}
+          {p.estStockable && <Badge variant="outline" className="text-xs">Stockable</Badge>}
+        </div>
+      );
+    },
+  },
+  {
+    key: "categorie",
+    header: (
+      <div className="flex items-center gap-1 cursor-pointer select-none" onClick={() => handleSort('categorie')} data-testid="sort-categorie">
+        <span>Catégorie</span>
+        <SortIcon columnKey="categorie" />
+      </div>
+    ),
+    render: (p: ProduitWithPrixDefaut) => (
+      <span className="text-sm text-muted-foreground">{p.categorie}</span>
+    ),
+  },
+  {
+    key: "unite",
+    header: "Unité",
+    render: (p: ProduitWithPrixDefaut) => <Badge variant="outline">{p.unite}</Badge>,
+  },
+  {
+    key: "fournisseur",
+    header: "Fournisseur défaut",
+    render: (p: ProduitWithPrixDefaut) => {
+      const isEditing = editingRow === p.id;
+      
+      if (isEditing) {
+        return (
+          <Select 
+            value={editForm.fournisseurId?.toString() || ""} 
+            onValueChange={(v) => setEditForm({ ...editForm, fournisseurId: parseInt(v) })}
+          >
+            <SelectTrigger className="h-8 text-sm">
+              <SelectValue placeholder="Choisir..." />
+            </SelectTrigger>
+            <SelectContent>
+              {fournisseurs.map((f: any) => (
+                <SelectItem key={f.id} value={f.id.toString()}>{f.nom}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        );
+      }
+      
+      return p.fournisseurDefaut ? (
+        <div className="text-sm" onDoubleClick={() => startEditing(p)}>
+          <span className="font-medium">{p.fournisseurDefaut.nom}</span>
+        </div>
+      ) : (
+        <span className="text-muted-foreground text-sm cursor-pointer" onDoubleClick={() => startEditing(p)}>
+          -
+        </span>
+      );
+    },
+  },
+  {
+    key: "prixHT",
+    header: (
+      <div className="flex items-center gap-1 cursor-pointer select-none justify-end" onClick={() => handleSort('prixHT')} data-testid="sort-prixHT">
+        <span>Prix HT</span>
+        <SortIcon columnKey="prixHT" />
+      </div>
+    ),
+    className: "text-right",
+    render: (p: ProduitWithPrixDefaut) => {
+      const isEditing = editingRow === p.id;
+      
+      if (isEditing) {
+        return (
+          <Input
+            type="number"
+            min="0"
+            value={editForm.prixHt || ""}
+            onChange={(e) => setEditForm({ ...editForm, prixHt: parseFloat(e.target.value) || 0 })}
+            className="h-8 text-sm text-right"
+          />
+        );
+      }
+      
+      return (
+        <span 
+          className="font-medium cursor-pointer" 
+          onDoubleClick={() => startEditing(p)}
+        >
+          {p.fournisseurDefaut ? formatFCFA(p.fournisseurDefaut.prixHt) : "-"}
+        </span>
+      );
+    },
+  },
+  {
+    key: "regimeFiscal",
+    header: "Régime fiscal",  // ← NOUVEAU : remplace "Prix final"
+    className: "text-center",
+    render: (p: ProduitWithPrixDefaut) => {
+      const isEditing = editingRow === p.id;
+      
+      if (isEditing) {
+        return (
+          <Select 
+            value={editForm.regimeFiscal} 
+            onValueChange={(v) => setEditForm({ ...editForm, regimeFiscal: v })}
+          >
+            <SelectTrigger className="h-8 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="tva_18">TVA 18%</SelectItem>
+              <SelectItem value="sans_tva">Sans TVA</SelectItem>
+              <SelectItem value="brs_5">BRS 5%</SelectItem>
+            </SelectContent>
+          </Select>
+        );
+      }
+      
+      return p.fournisseurDefaut ? (
+        <div onDoubleClick={() => startEditing(p)}>
+          <RegimeBadge regime={p.fournisseurDefaut.regimeFiscal} size="sm" />
+        </div>
+      ) : (
+        <span className="text-muted-foreground text-sm">-</span>
+      );
+    },
+  },
+  {
+    key: "derniereMAJ",
+    header: (
+      <div className="flex items-center gap-1 cursor-pointer select-none" onClick={() => handleSort('derniereMAJ')} data-testid="sort-derniereMAJ">
+        <span>Dernière MAJ</span>
+        <SortIcon columnKey="derniereMAJ" />
+      </div>
+    ),
+    className: "min-w-[150px]",
+    render: (p: ProduitWithPrixDefaut) => (
+      <span className="text-sm text-muted-foreground" data-testid={`text-derniere-maj-${p.id}`}>
+        {p.prixDateModification ? formatDateTime(p.prixDateModification) : '-'}
+      </span>
+    ),
+  },
+  {
+    key: "creePar",
+    header: (
+      <div className="flex items-center gap-1 cursor-pointer select-none" onClick={() => handleSort('creePar')} data-testid="sort-creePar">
+        <span>Créé par</span>
+        <SortIcon columnKey="creePar" />
+      </div>
+    ),
+    render: (p: ProduitWithPrixDefaut) => (
+      <span className="text-sm text-muted-foreground" data-testid={`text-creepar-${p.id}`}>
+        {p.creePar || '-'}
+      </span>
+    ),
+  },
+  {
+    key: "actions",
+    header: "",
+    className: "text-right",
+    render: (p: ProduitWithPrixDefaut) => {
+      const isEditing = editingRow === p.id;
+      
+      if (isEditing) {
+        return (
+          <div className="flex items-center justify-end gap-1">
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={saveEditing}
+              disabled={updateProductPriceMutation.isPending}
+              className="text-green-600 hover:text-green-700"
+            >
+              <CheckCircle className="h-4 w-4" />
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={cancelEditing}
+              disabled={updateProductPriceMutation.isPending}
+              className="text-red-500 hover:text-red-700"
+            >
+              <XCircle className="h-4 w-4" />
+            </Button>
+          </div>
+        );
+      }
+      
+      return (
+        <div className="flex items-center justify-end gap-1">
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={() => startEditing(p)} 
+            data-testid={`button-edit-${p.id}`}
+          >
+            <Eye className="h-4 w-4" />
+          </Button>
+          {p.actif ? (
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="text-red-500 hover:text-red-700" 
+              onClick={(e) => {
+                e.stopPropagation();
+                if (confirm("Désactiver ce produit ? Il sera masqué de la liste par défaut.")) {
+                  desactiverMutation.mutate(p.id);
+                }
+              }} 
+              data-testid={`button-desactiver-${p.id}`}
+            >
+              <XCircle className="h-4 w-4" />
+            </Button>
+          ) : (
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="text-green-600 hover:text-green-800" 
+              onClick={(e) => {
+                e.stopPropagation();
+                reactiverMutation.mutate(p.id);
+              }} 
+              data-testid={`button-reactiver-${p.id}`}
+            >
+              <CheckCircle className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+      );
+    },
+  },
+];
+5. Ajuster le tri pour nouvelle colonne
+Dans la fonction sortedProduits = useMemo(...) (ligne ~280), remplacer le case 'prixFinal': par :
+case 'regimeFiscal':
+  aVal = a.fournisseurDefaut?.regimeFiscal || '';
+  bVal = b.fournisseurDefaut?.regimeFiscal || '';
+  break;
+COMPORTEMENT ATTENDU
+Performance :
+Temps de chargement réduit de 5-10s à <1s
+1 seule requête SQL au lieu de N+1
+Édition inline :
+Double-clic sur cellule → mode édition
+Champs éditables : Nom produit, Fournisseur (dropdown), Prix HT (input number), Régime fiscal (dropdown)
+Boutons : ✓ Valider (vert) | ✗ Annuler (rouge)
+Toast de confirmation après sauvegarde
+Colonne Régime fiscal :
+Badge coloré (TVA 18%, Sans TVA, BRS 5%)
+En mode édition : dropdown select
+TESTS À EFFECTUER
+Charger /produits → vérifier temps <2s
+Double-clic sur nom produit → input apparaît
+Modifier nom → Valider → toast de confirmation
+Double-clic sur fournisseur → dropdown apparaît
+Changer fournisseur + prix + régime → Valider → vérifier enregistrement
+Bouton Annuler → retour état initial
+Tri par colonnes (nom, catégorie, prix HT, régime fiscal) fonctionne
+Filtres (catégorie, prix, stockable) fonctionnent toujours
+POINTS D'ATTENTION
+⚠️ Ne pas casser les tests existants (data-testid)
+⚠️ Garder compatibilité avec dialog d'ajout produit/prix
+⚠️ Icône Eye → remplacer par icône Edit (Pencil) dans bouton édition
+⚠️ Optimistic UI : afficher loading pendant sauvegarde
+⚠️ Import manquant : ajouter import { Pencil } from "lucide-react"; en haut du fichier
+FICHIERS À MODIFIER
+server/storage.ts → Méthode getProduits() (lignes 126-172)
+client/src/pages/produits.tsx → État édition + colonnes tableau + mutations
+GAIN ESTIMÉ
+Performance : 90-95% plus rapide (1 requête vs 101)
+UX : Édition 5x plus rapide (pas de dialog, édition directe)
+Coûts Replit : Réduction ~90% du temps d'exécution sur cette page
+
+---
+
+## ❓ QUESTIONS DE VALIDATION
+
+1. **Sauvegarde automatique** : Tu veux sauvegarder dès qu'on quitte le champ (comme Excel) ou avec bouton Valider explicite ?
+   - **Ma recommandation** : Bouton Valider pour éviter sauvegardes accidentelles
+
+2. **Édition multi-lignes** : Une seule ligne éditable à la fois ou plusieurs ?
+   - **Ma recommandation** : Une seule (évite conflits)
+
+3. **Icône édition** : Remplacer œil (Eye) par crayon (Pencil) pour clarté ?
+   - **Ma recommandation** : Oui, plus intuitif
+
+4. **Priorité** : Commencer par optimisation performance ou édition inline ?
+   - **Ma recommandation** : Performance d'abord (impact immédiat), puis édition
+
+---
+
+## ⚠️ POINTS DE VIGILANCE
+
+1. **Import Drizzle** : Vérifier que `leftJoin` est bien importé dans storage.ts
+2. **Tests** : Conserver tous les `data-testid` existants
+3. **Gestion erreurs** : Toast en cas d'échec sauvegarde
+4. **Loading state** : Disabled pendant `updateProductPriceMutation.isPending`
+
+---
+
+## ✅ CHECKLIST POST-BUILD
+
+- [ ] Charger /produits → <2s (vs 5-10s avant)
+- [ ] Console DevTools → 1 requête `/api/referentiel/produits` (vs N+1 avant)
+- [ ] Double-clic sur nom → Input apparaît
+- [ ] Modifier + Valider → Toast "Modifications enregistrées"
+- [ ] Modifier + Annuler → Retour état initial
+- [ ] Fournisseur dropdown affiche tous fournisseurs actifs
+- [ ] Régime fiscal dropdown : TVA 18%, Sans TVA, BRS 5%
+- [ ] Badge Régime fiscal s'affiche correctement (couleurs)
+- [ ] Tri par toutes colonnes fonctionne
+- [ ] Filtres (catégorie/prix/stockable/inactifs) fonctionnent

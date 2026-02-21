@@ -148,53 +148,74 @@ export class DatabaseStorage implements IStorage {
     if (filters?.categorie) conditions.push(eq(produitsMaster.categorie, filters.categorie));
     if (filters?.stockable !== undefined) conditions.push(eq(produitsMaster.estStockable, filters.stockable));
 
-    const products = await db
-      .select()
+    const rows = await db
+      .select({
+        id: produitsMaster.id,
+        nom: produitsMaster.nom,
+        nomNormalise: produitsMaster.nomNormalise,
+        categorie: produitsMaster.categorie,
+        sousSection: produitsMaster.sousSection,
+        unite: produitsMaster.unite,
+        estStockable: produitsMaster.estStockable,
+        sourceApp: produitsMaster.sourceApp,
+        actif: produitsMaster.actif,
+        longueur: produitsMaster.longueur,
+        largeur: produitsMaster.largeur,
+        couleur: produitsMaster.couleur,
+        estTemplate: produitsMaster.estTemplate,
+        dateCreation: produitsMaster.dateCreation,
+        dateModification: produitsMaster.dateModification,
+        creePar: produitsMaster.creePar,
+        prixId: prixFournisseurs.id,
+        prixHt: prixFournisseurs.prixHt,
+        prixTtc: prixFournisseurs.prixTtc,
+        prixBrs: prixFournisseurs.prixBrs,
+        regimeFiscal: prixFournisseurs.regimeFiscal,
+        prixDateModification: prixFournisseurs.dateModification,
+        prixDateCreation: prixFournisseurs.dateCreation,
+        fournisseurId: fournisseurs.id,
+        fournisseurNom: fournisseurs.nom,
+      })
       .from(produitsMaster)
+      .leftJoin(
+        prixFournisseurs,
+        and(
+          eq(prixFournisseurs.produitMasterId, produitsMaster.id),
+          eq(prixFournisseurs.estFournisseurDefaut, true),
+          eq(prixFournisseurs.actif, true)
+        )
+      )
+      .leftJoin(fournisseurs, eq(prixFournisseurs.fournisseurId, fournisseurs.id))
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(asc(produitsMaster.categorie), asc(produitsMaster.nom));
 
-    const result: ProduitWithPrixDefaut[] = [];
-
-    for (const p of products) {
-      const defautPrix = await db
-        .select({
-          id: prixFournisseurs.id,
-          prixHt: prixFournisseurs.prixHt,
-          prixTtc: prixFournisseurs.prixTtc,
-          prixBrs: prixFournisseurs.prixBrs,
-          regimeFiscal: prixFournisseurs.regimeFiscal,
-          fournisseurNom: fournisseurs.nom,
-          fournisseurId: fournisseurs.id,
-          dateModification: prixFournisseurs.dateModification,
-          dateCreation: prixFournisseurs.dateCreation,
-        })
-        .from(prixFournisseurs)
-        .innerJoin(fournisseurs, eq(prixFournisseurs.fournisseurId, fournisseurs.id))
-        .where(
-          and(
-            eq(prixFournisseurs.produitMasterId, p.id),
-            eq(prixFournisseurs.estFournisseurDefaut, true),
-            eq(prixFournisseurs.actif, true)
-          )
-        )
-        .limit(1);
-
-      const fDef = defautPrix[0];
-
-      result.push({
-        ...p,
-        fournisseurDefaut: fDef ? {
-          id: fDef.fournisseurId,
-          nom: fDef.fournisseurNom,
-          prixHt: fDef.prixHt,
-          prixTtc: fDef.prixTtc,
-          prixBrs: fDef.prixBrs,
-          regimeFiscal: fDef.regimeFiscal,
-        } : null,
-        prixDateModification: fDef ? (fDef.dateModification || fDef.dateCreation) : (p.dateModification || p.dateCreation),
-      });
-    }
+    const result: ProduitWithPrixDefaut[] = rows.map(row => ({
+      id: row.id,
+      nom: row.nom,
+      nomNormalise: row.nomNormalise,
+      categorie: row.categorie,
+      sousSection: row.sousSection,
+      unite: row.unite,
+      estStockable: row.estStockable,
+      sourceApp: row.sourceApp,
+      actif: row.actif,
+      longueur: row.longueur,
+      largeur: row.largeur,
+      couleur: row.couleur,
+      estTemplate: row.estTemplate,
+      dateCreation: row.dateCreation,
+      dateModification: row.dateModification,
+      creePar: row.creePar,
+      fournisseurDefaut: row.prixId ? {
+        id: row.fournisseurId!,
+        nom: row.fournisseurNom!,
+        prixHt: row.prixHt!,
+        prixTtc: row.prixTtc,
+        prixBrs: row.prixBrs,
+        regimeFiscal: row.regimeFiscal!,
+      } : null,
+      prixDateModification: row.prixDateModification || row.prixDateCreation || row.dateModification || row.dateCreation,
+    }));
 
     if (filters?.avecPrix === true) {
       return result.filter(p => p.fournisseurDefaut);
