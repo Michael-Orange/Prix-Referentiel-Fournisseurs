@@ -123,12 +123,13 @@ router.get("/me", async (req, res) => {
 router.get("/usernames", async (_req, res) => {
   try {
     const activeUsers = await db
-      .select({ username: users.username })
+      .select({ username: users.username, peutAccesPrix: users.peutAccesPrix })
       .from(users)
       .where(eq(users.actif, true))
       .orderBy(users.username);
 
-    res.json({ usernames: activeUsers.map((u) => u.username) });
+    const prixUsers = activeUsers.filter((u) => u.peutAccesPrix);
+    res.json({ usernames: prixUsers.map((u) => u.username) });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
