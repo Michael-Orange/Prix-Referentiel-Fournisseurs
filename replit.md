@@ -115,6 +115,10 @@ BRS 5%:   prixTtc = null, prixBrs = prixHt / 0.95
 - **zod** + **drizzle-zod**: Runtime schema validation
 
 ## Recent Changes (2026-02-21)
+- Category-level stockage control: estStockable column on categories, PATCH toggle endpoint with cascade to products
+- Categories page: clickable green/red stockage badges, product count display, confirmation dialogs for toggle
+- Inline edit validation: price requires fournisseur + régime fiscal, red borders + toast feedback, disabled save button with tooltip
+- Stockage field disabled in inline edit when product's category is non-stockable (shows "Non (catégorie)" badge)
 - Cleaned up Neon DB: replaced numeric IDs in creePar with actual user names (1→Marine, 2→Fatou, 3→Michael)
 - creePar now accepts body values (creePar/cree_par) from external API calls, with API key name as fallback
 - Dernière MAJ logic: shows price modification date if prices exist, otherwise product modification date
