@@ -183,7 +183,7 @@ export default function Categories() {
           <DialogHeader>
             <DialogTitle>Nouvelle catégorie</DialogTitle>
             <DialogDescription>
-              Créez une nouvelle catégorie de produits.
+              Créez une nouvelle catégorie de produits. Les sous-sections seront créées automatiquement lors de l'ajout de produits.
             </DialogDescription>
           </DialogHeader>
 
@@ -198,6 +198,9 @@ export default function Categories() {
                 autoFocus
                 data-testid="input-new-categorie-nom"
               />
+              <p className="text-xs text-muted-foreground mt-1">
+                Les sous-sections apparaîtront ici une fois que des produits seront ajoutés avec une sous-section.
+              </p>
             </div>
           </div>
 

@@ -1,0 +1,96 @@
+# CORRECTION : TEXTE D'AIDE SOUS-SECTION
+
+File: client/src/pages/categories.tsx
+
+## Modifier le texte d'aide dans le Dialog "Nouvelle catégorie"
+
+Localiser le paragraphe d'aide sous le champ "Sous-section" :
+
+REMPLACER :
+```typescript
+<p className="text-xs text-muted-foreground mt-1">
+  Laissez vide ou écrivez "Tous" pour ne pas créer de sous-section
+</p>
+PAR :
+<p className="text-xs text-muted-foreground mt-1">
+  Laissez vide pour ne pas créer de sous-section et les produits seront catégorisés dans Tous.
+</p>
+Adapter aussi la logique de création
+Dans la mutation createCategorieMutation, s'assurer que la logique ignore bien "Tous" :
+const createCategorieMutation = useMutation({
+  mutationFn: async (data: { nom: string; sousSection?: string }) => {
+    // Créer la catégorie
+    const categorie = await apiRequest("POST", "/api/referentiel/categories", {
+      nom: data.nom,
+    });
+    
+    // Si sous-section fournie et != vide (après trim)
+    // Ne PAS créer si "Tous" saisi (gérer le cas au cas où)
+    const sectionClean = data.sousSection?.trim() || "";
+    if (sectionClean !== "" && sectionClean.toLowerCase() !== "tous") {
+      await apiRequest("POST", "/api/referentiel/sous-sections", {
+        nom: sectionClean,
+        categorie_id: categorie.id,
+      });
+    }
+    
+    return categorie;
+  },
+  // ... rest
+});
+Texte final du Dialog
+┌────────────────────────────────────────────────┐
+│ Nouvelle catégorie                         ×   │
+├────────────────────────────────────────────────┤
+│ Créez une nouvelle catégorie de produits.     │
+│ Vous pouvez optionnellement ajouter une        │
+│ sous-section.                                  │
+│                                                │
+│ Nom de la catégorie *                          │
+│ ┌────────────────────────────────────────────┐ │
+│ │ Ex: Plomberie et Irrigation                │ │
+│ └────────────────────────────────────────────┘ │
+│                                                │
+│ Sous-section (optionnel)                       │
+│ ┌────────────────────────────────────────────┐ │
+│ │ Ex: Tubes PVC ou laissez vide              │ │
+│ └────────────────────────────────────────────┘ │
+│ Laissez vide pour ne pas créer de sous-section│
+│ et les produits seront catégorisés dans Tous. │
+│                                                │
+│                          [Annuler]   [Créer]   │
+└────────────────────────────────────────────────┘
+Comportements
+Scénario 1 : Sous-section vide
+Input: 
+  - Nom: "Plomberie"
+  - Sous-section: "" (vide)
+
+Résultat:
+  - Catégorie "Plomberie" créée
+  - Aucune sous-section créée
+  - Produits futurs → Sous-section = "Tous"
+Scénario 2 : Sous-section avec nom
+Input:
+  - Nom: "Plomberie"
+  - Sous-section: "Tubes PVC"
+
+Résultat:
+  - Catégorie "Plomberie" créée
+  - Sous-section "Tubes PVC" créée et liée à Plomberie
+Scénario 3 : Utilisateur tape "Tous" (géré)
+Input:
+  - Nom: "Plomberie"
+  - Sous-section: "Tous"
+
+Résultat:
+  - Catégorie "Plomberie" créée
+  - Aucune sous-section créée (ignoré via toLowerCase)
+  - Produits futurs → Sous-section = "Tous"
+Validation
+ Texte d'aide clair et sans ambiguïté
+ "Tous" tapé manuellement → ignoré (pas créé en sous-section)
+ Champ vide → aucune sous-section créée
+ Texte cohérent avec comportement réel
+
+**Plus clair et sans confusion !

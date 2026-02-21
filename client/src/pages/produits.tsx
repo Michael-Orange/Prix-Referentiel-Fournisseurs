@@ -83,6 +83,7 @@ export default function Produits() {
   const [filterCategorie, setFilterCategorie] = useState<string>(categorieFromUrl || "all");
   const [filterPrix, setFilterPrix] = useState<string>("all");
   const [filterStockable, setFilterStockable] = useState<string>("all");
+  const [filterSousSection, setFilterSousSection] = useState<string>("all");
   const [includeInactifs, setIncludeInactifs] = useState(false);
 
   const [isProductDialogOpen, setIsProductDialogOpen] = useState(false);
@@ -164,6 +165,15 @@ export default function Produits() {
   const getSousSectionsForCategorie = (categorieNom: string) => {
     return sousSectionsData.filter((ss) => ss.categorie === categorieNom);
   };
+
+  const availableSousSections = useMemo(() => {
+    if (!filterCategorie || filterCategorie === "all") return [];
+    return sousSectionsData.filter((ss) => ss.categorie === filterCategorie);
+  }, [filterCategorie, sousSectionsData]);
+
+  useEffect(() => {
+    setFilterSousSection("all");
+  }, [filterCategorie]);
 
   const { data: detailData, isLoading: isLoadingDetail } = useQuery<{ produit: ProduitDetail }>({
     queryKey: ["/api/referentiel/produits", selectedProductId],
@@ -334,13 +344,14 @@ export default function Produits() {
   const filteredProduits = produits.filter((p) => {
     const matchSearch = p.nom.toLowerCase().includes(search.toLowerCase());
     const matchCategorie = filterCategorie === "all" || p.categorie === filterCategorie;
+    const matchSousSection = filterSousSection === "all" || p.sousSection === filterSousSection;
     const matchPrix = filterPrix === "all" ||
       (filterPrix === "avec" && p.fournisseurDefaut) ||
       (filterPrix === "sans" && !p.fournisseurDefaut);
     const matchStockable = filterStockable === "all" ||
       (filterStockable === "oui" && p.estStockable) ||
       (filterStockable === "non" && !p.estStockable);
-    return matchSearch && matchCategorie && matchPrix && matchStockable;
+    return matchSearch && matchCategorie && matchSousSection && matchPrix && matchStockable;
   });
 
   const handleSort = (key: string) => {
@@ -367,6 +378,22 @@ export default function Produits() {
         case 'categorie':
           aVal = a.categorie.toLowerCase();
           bVal = b.categorie.toLowerCase();
+          break;
+        case 'stockage':
+          aVal = a.estStockable ? 1 : 0;
+          bVal = b.estStockable ? 1 : 0;
+          break;
+        case 'sousSection':
+          aVal = (a.sousSection || '').toLowerCase();
+          bVal = (b.sousSection || '').toLowerCase();
+          break;
+        case 'unite':
+          aVal = a.unite.toLowerCase();
+          bVal = b.unite.toLowerCase();
+          break;
+        case 'fournisseur':
+          aVal = (a.fournisseurDefaut?.nom || '').toLowerCase();
+          bVal = (b.fournisseurDefaut?.nom || '').toLowerCase();
           break;
         case 'prixHT':
           aVal = a.fournisseurDefaut?.prixHt ?? 0;
@@ -540,7 +567,12 @@ export default function Produits() {
     },
     {
       key: "stockage",
-      header: "Stockage",
+      header: (
+        <div className="flex items-center gap-1 cursor-pointer select-none" onClick={() => handleSort('stockage')} data-testid="sort-stockage">
+          <span>Stockage</span>
+          <SortIcon columnKey="stockage" />
+        </div>
+      ),
       render: (p: ProduitWithPrixDefaut) => {
         const isEditing = editingRow === p.id;
         const catInfo = categoriesList.find(c => c.nom === p.categorie);
@@ -592,7 +624,12 @@ export default function Produits() {
     },
     {
       key: "sousSection",
-      header: "Sous-section",
+      header: (
+        <div className="flex items-center gap-1 cursor-pointer select-none" onClick={() => handleSort('sousSection')} data-testid="sort-sousSection">
+          <span>Sous-section</span>
+          <SortIcon columnKey="sousSection" />
+        </div>
+      ),
       render: (p: ProduitWithPrixDefaut) => {
         const isEditing = editingRow === p.id;
         if (isEditing) {
@@ -625,12 +662,22 @@ export default function Produits() {
     },
     {
       key: "unite",
-      header: "Unité",
+      header: (
+        <div className="flex items-center gap-1 cursor-pointer select-none" onClick={() => handleSort('unite')} data-testid="sort-unite">
+          <span>Unité</span>
+          <SortIcon columnKey="unite" />
+        </div>
+      ),
       render: (p: ProduitWithPrixDefaut) => <Badge variant="outline">{p.unite}</Badge>,
     },
     {
       key: "fournisseur",
-      header: "Fournisseur défaut",
+      header: (
+        <div className="flex items-center gap-1 cursor-pointer select-none" onClick={() => handleSort('fournisseur')} data-testid="sort-fournisseur">
+          <span>Fournisseur défaut</span>
+          <SortIcon columnKey="fournisseur" />
+        </div>
+      ),
       render: (p: ProduitWithPrixDefaut) => {
         const isEditing = editingRow === p.id;
         if (isEditing) {
@@ -698,7 +745,12 @@ export default function Produits() {
     },
     {
       key: "regimeFiscal",
-      header: "Régime fiscal",
+      header: (
+        <div className="flex items-center gap-1 cursor-pointer select-none" onClick={() => handleSort('regimeFiscal')} data-testid="sort-regimeFiscal">
+          <span>Régime fiscal</span>
+          <SortIcon columnKey="regimeFiscal" />
+        </div>
+      ),
       className: "text-center",
       render: (p: ProduitWithPrixDefaut) => {
         const isEditing = editingRow === p.id;
@@ -864,6 +916,24 @@ export default function Produits() {
             <SelectItem value="all">Toutes catégories</SelectItem>
             {categoriesList.map((cat) => (
               <SelectItem key={cat.id} value={cat.nom}>{cat.nom}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select
+          value={filterSousSection}
+          onValueChange={setFilterSousSection}
+          disabled={!filterCategorie || filterCategorie === "all"}
+        >
+          <SelectTrigger
+            className={`w-[200px] ${(!filterCategorie || filterCategorie === "all") ? 'opacity-50' : ''}`}
+            data-testid="select-filter-sous-section"
+          >
+            <SelectValue placeholder="Sous-section" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Toutes sous-sections</SelectItem>
+            {availableSousSections.map((ss) => (
+              <SelectItem key={ss.id} value={ss.nom}>{ss.nom}</SelectItem>
             ))}
           </SelectContent>
         </Select>
