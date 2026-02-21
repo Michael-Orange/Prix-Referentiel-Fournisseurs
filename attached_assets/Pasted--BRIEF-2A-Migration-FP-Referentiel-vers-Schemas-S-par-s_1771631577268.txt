@@ -1,0 +1,527 @@
+# BRIEF 2A : Migration FP-Referentiel vers Schemas Séparés
+
+## 🎯 OBJECTIF
+Restructurer FP-Referentiel-Produit pour utiliser des schemas PostgreSQL séparés (`referentiel`, `prix`) au lieu du schema `public` par défaut.
+
+**Pourquoi :** Préparer l'app pour le partage de données avec GestionStockFP.
+
+## ⚠️ CONTEXTE
+
+**App en production avec données existantes**
+- Produits, fournisseurs, prix déjà en base
+- Authentification fonctionnelle
+- Audit trail actif
+
+**RÈGLE ABSOLUE** : Aucune perte de données. Migration en copie (pas de suppression).
+
+---
+
+## 🔄 PLAN DE MIGRATION
+
+### ÉTAPE 0 : BACKUP
+
+Créer un backup complet :
+```bash
+pg_dump $DATABASE_URL > backup-$(date +%Y%m%d-%H%M%S).sql
+```
+
+Vérifier :
+```bash
+ls -lh backup-*.sql
+# Doit être > 0 KB
+```
+
+---
+
+### ÉTAPE 1 : CRÉER LES SCHEMAS
+
+Script SQL `migrations/001_create_schemas.sql` :
+```sql
+-- Créer schemas
+CREATE SCHEMA IF NOT EXISTS referentiel;
+CREATE SCHEMA IF NOT EXISTS prix;
+
+-- Extension pour recherche similarité
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+```
+
+Exécuter :
+```bash
+psql $DATABASE_URL < migrations/001_create_schemas.sql
+```
+
+---
+
+### ÉTAPE 2 : CRÉER TABLES DANS SCHEMA REFERENTIEL
+
+```sql
+-- Table produits_master (structure enrichie)
+CREATE TABLE IF NOT EXISTS referentiel.produits_master (
+  id SERIAL PRIMARY KEY,
+  nom TEXT NOT NULL UNIQUE,
+  nom_normalise TEXT NOT NULL,
+  categorie TEXT NOT NULL,
+  sous_section TEXT,
+  unite TEXT NOT NULL,
+  
+  -- Métadonnées
+  est_stockable BOOLEAN NOT NULL DEFAULT false,
+  source_app TEXT NOT NULL, -- "stock" | "prix"
+  
+  -- Attributs optionnels (géomembranes)
+  longueur REAL,
+  largeur REAL,
+  couleur TEXT,
+  est_template BOOLEAN NOT NULL DEFAULT false,
+  
+  -- Audit
+  actif BOOLEAN NOT NULL DEFAULT true,
+  date_creation TIMESTAMP NOT NULL DEFAULT NOW(),
+  date_modification TIMESTAMP NOT NULL DEFAULT NOW(),
+  cree_par TEXT
+);
+
+-- Index
+CREATE INDEX IF NOT EXISTS idx_produits_nom ON referentiel.produits_master(nom);
+CREATE INDEX IF NOT EXISTS idx_produits_nom_normalise ON referentiel.produits_master USING gin(nom_normalise gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_produits_categorie ON referentiel.produits_master(categorie);
+
+-- Categories
+CREATE TABLE IF NOT EXISTS referentiel.categories (
+  id SERIAL PRIMARY KEY,
+  nom TEXT NOT NULL UNIQUE,
+  ordre_affichage INTEGER NOT NULL DEFAULT 0
+);
+
+-- Unites
+CREATE TABLE IF NOT EXISTS referentiel.unites (
+  id SERIAL PRIMARY KEY,
+  code TEXT NOT NULL UNIQUE,
+  libelle TEXT NOT NULL,
+  type TEXT
+);
+```
+
+---
+
+### ÉTAPE 3 : CRÉER TABLES DANS SCHEMA PRIX
+
+```sql
+-- Fournisseurs
+CREATE TABLE IF NOT EXISTS prix.fournisseurs (
+  id SERIAL PRIMARY KEY,
+  nom TEXT NOT NULL UNIQUE,
+  actif BOOLEAN NOT NULL DEFAULT true,
+  date_creation TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- Prix fournisseurs
+CREATE TABLE IF NOT EXISTS prix.prix_fournisseurs (
+  id SERIAL PRIMARY KEY,
+  produit_master_id INTEGER NOT NULL REFERENCES referentiel.produits_master(id),
+  fournisseur_id INTEGER NOT NULL REFERENCES prix.fournisseurs(id),
+  prix_ht REAL NOT NULL,
+  regime_fiscal TEXT NOT NULL, -- "tva_18" | "sans_tva" | "brs_5"
+  prix_ttc REAL NOT NULL,
+  prix_brs REAL NOT NULL,
+  est_fournisseur_defaut BOOLEAN NOT NULL DEFAULT false,
+  actif BOOLEAN NOT NULL DEFAULT true,
+  date_creation TIMESTAMP NOT NULL DEFAULT NOW(),
+  date_modification TIMESTAMP NOT NULL DEFAULT NOW(),
+  cree_par TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_prix_produit ON prix.prix_fournisseurs(produit_master_id);
+CREATE INDEX IF NOT EXISTS idx_prix_fournisseur ON prix.prix_fournisseurs(fournisseur_id);
+
+-- Historique prix
+CREATE TABLE IF NOT EXISTS prix.historique_prix (
+  id SERIAL PRIMARY KEY,
+  prix_fournisseur_id INTEGER NOT NULL REFERENCES prix.prix_fournisseurs(id),
+  prix_ht_ancien REAL NOT NULL,
+  prix_ht_nouveau REAL NOT NULL,
+  regime_fiscal_ancien TEXT NOT NULL,
+  regime_fiscal_nouveau TEXT NOT NULL,
+  modifie_par TEXT,
+  date_modification TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- Trigger historique
+CREATE OR REPLACE FUNCTION enregistrer_historique_prix()
+RETURNS TRIGGER AS $$
+DECLARE
+  current_user_name TEXT;
+BEGIN
+  BEGIN
+    current_user_name := current_setting('app.current_user', true);
+  EXCEPTION
+    WHEN OTHERS THEN
+      current_user_name := 'Système';
+  END;
+
+  IF OLD.prix_ht IS DISTINCT FROM NEW.prix_ht 
+     OR OLD.regime_fiscal IS DISTINCT FROM NEW.regime_fiscal THEN
+    INSERT INTO prix.historique_prix (
+      prix_fournisseur_id, prix_ht_ancien, prix_ht_nouveau,
+      regime_fiscal_ancien, regime_fiscal_nouveau,
+      modifie_par, date_modification
+    ) VALUES (
+      NEW.id, OLD.prix_ht, NEW.prix_ht,
+      OLD.regime_fiscal, NEW.regime_fiscal,
+      current_user_name, NOW()
+    );
+  END IF;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trigger_historique_prix ON prix.prix_fournisseurs;
+CREATE TRIGGER trigger_historique_prix
+AFTER UPDATE ON prix.prix_fournisseurs
+FOR EACH ROW
+EXECUTE FUNCTION enregistrer_historique_prix();
+```
+
+---
+
+### ÉTAPE 4 : MIGRER LES DONNÉES
+
+```sql
+-- Migrer categories
+INSERT INTO referentiel.categories (nom, ordre_affichage)
+SELECT nom, ordre FROM public.categories
+ON CONFLICT (nom) DO NOTHING;
+
+-- Seed unites standard
+INSERT INTO referentiel.unites (code, libelle, type) VALUES
+('u', 'unité(s)', 'quantite'),
+('m', 'mètre(s)', 'longueur'),
+('ml', 'mètre linéaire', 'longueur'),
+('m2', 'mètre carré', 'surface'),
+('m3', 'mètre cube', 'volume'),
+('kg', 'kilogramme(s)', 'poids'),
+('L', 'litre(s)', 'volume'),
+('tonne', 'tonne(s)', 'poids')
+ON CONFLICT (code) DO NOTHING;
+
+-- Migrer produits → produits_master
+INSERT INTO referentiel.produits_master (
+  nom, nom_normalise, categorie, sous_section, unite, 
+  est_stockable, source_app, actif, date_creation, cree_par
+)
+SELECT 
+  p.nom,
+  lower(regexp_replace(p.nom, '[^a-zA-Z0-9 ]', '', 'g')),
+  c.nom,
+  NULL,
+  p.unite_mesure,
+  false,
+  'prix',
+  p.actif,
+  p.date_creation,
+  'migration_csv'
+FROM public.produits p
+INNER JOIN public.categories c ON c.id = p.categorie_id
+ON CONFLICT (nom) DO NOTHING;
+
+-- Migrer fournisseurs
+INSERT INTO prix.fournisseurs (id, nom, actif, date_creation)
+SELECT id, nom, actif, date_creation FROM public.fournisseurs
+ON CONFLICT (nom) DO NOTHING;
+
+-- Migrer prix_fournisseurs
+INSERT INTO prix.prix_fournisseurs (
+  produit_master_id, fournisseur_id, prix_ht, regime_fiscal,
+  prix_ttc, prix_brs, actif, date_creation, cree_par
+)
+SELECT 
+  pm.id,
+  pf.fournisseur_id,
+  pf.prix_ht,
+  CASE 
+    WHEN pf.taux_tva = 18 THEN 'tva_18'
+    WHEN pf.taux_tva = 0 THEN 'sans_tva'
+    ELSE 'sans_tva'
+  END,
+  pf.prix_ttc,
+  pf.prix_ht * 1.05,
+  pf.actif,
+  pf.date_creation,
+  'migration'
+FROM public.prix_fournisseurs pf
+INNER JOIN public.produits p ON p.id = pf.produit_id
+INNER JOIN referentiel.produits_master pm ON pm.nom = p.nom;
+```
+
+**Vérification :**
+```sql
+SELECT 
+  (SELECT COUNT(*) FROM public.produits) as old_count,
+  (SELECT COUNT(*) FROM referentiel.produits_master) as new_count;
+```
+
+---
+
+### ÉTAPE 5 : ADAPTER SCHEMA DRIZZLE
+
+Créer `shared/schema-referentiel.ts` :
+```typescript
+import { pgSchema, text, serial, real, boolean, timestamp, index } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod";
+
+export const referentielSchema = pgSchema("referentiel");
+
+export const produitsMaster = referentielSchema.table("produits_master", {
+  id: serial("id").primaryKey(),
+  nom: text("nom").notNull().unique(),
+  nomNormalise: text("nom_normalise").notNull(),
+  categorie: text("categorie").notNull(),
+  sousSection: text("sous_section"),
+  unite: text("unite").notNull(),
+  estStockable: boolean("est_stockable").notNull().default(false),
+  sourceApp: text("source_app").notNull(),
+  longueur: real("longueur"),
+  largeur: real("largeur"),
+  couleur: text("couleur"),
+  estTemplate: boolean("est_template").notNull().default(false),
+  actif: boolean("actif").notNull().default(true),
+  dateCreation: timestamp("date_creation").notNull().defaultNow(),
+  dateModification: timestamp("date_modification").notNull().defaultNow(),
+  creePar: text("cree_par"),
+});
+
+export const insertProduitMasterSchema = createInsertSchema(produitsMaster).omit({
+  id: true,
+  dateCreation: true,
+  dateModification: true,
+});
+
+export type InsertProduitMaster = z.infer<typeof insertProduitMasterSchema>;
+export type ProduitMaster = typeof produitsMaster.$inferSelect;
+
+export const categories = referentielSchema.table("categories", {
+  id: serial("id").primaryKey(),
+  nom: text("nom").notNull().unique(),
+  ordreAffichage: serial("ordre_affichage"),
+});
+
+export const unites = referentielSchema.table("unites", {
+  id: serial("id").primaryKey(),
+  code: text("code").notNull().unique(),
+  libelle: text("libelle").notNull(),
+  type: text("type"),
+});
+
+export const REGIMES_FISCAUX = ["tva_18", "sans_tva", "brs_5"] as const;
+export type RegimeFiscal = typeof REGIMES_FISCAUX[number];
+```
+
+Créer `shared/schema-prix.ts` :
+```typescript
+import { pgSchema, text, serial, real, boolean, timestamp, integer, index } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod";
+
+export const prixSchema = pgSchema("prix");
+
+export const fournisseurs = prixSchema.table("fournisseurs", {
+  id: serial("id").primaryKey(),
+  nom: text("nom").notNull().unique(),
+  actif: boolean("actif").notNull().default(true),
+  dateCreation: timestamp("date_creation").notNull().defaultNow(),
+});
+
+export const insertFournisseurSchema = createInsertSchema(fournisseurs).omit({
+  id: true,
+  dateCreation: true,
+});
+
+export type InsertFournisseur = z.infer<typeof insertFournisseurSchema>;
+export type Fournisseur = typeof fournisseurs.$inferSelect;
+
+export const prixFournisseurs = prixSchema.table("prix_fournisseurs", {
+  id: serial("id").primaryKey(),
+  produitMasterId: integer("produit_master_id").notNull(),
+  fournisseurId: integer("fournisseur_id").notNull().references(() => fournisseurs.id),
+  prixHt: real("prix_ht").notNull(),
+  regimeFiscal: text("regime_fiscal").notNull(),
+  prixTtc: real("prix_ttc").notNull(),
+  prixBrs: real("prix_brs").notNull(),
+  estFournisseurDefaut: boolean("est_fournisseur_defaut").notNull().default(false),
+  actif: boolean("actif").notNull().default(true),
+  dateCreation: timestamp("date_creation").notNull().defaultNow(),
+  dateModification: timestamp("date_modification").notNull().defaultNow(),
+  creePar: text("cree_par"),
+}, (table) => [
+  index("idx_prix_produit").on(table.produitMasterId),
+  index("idx_prix_fournisseur").on(table.fournisseurId),
+]);
+
+export const historiquePrix = prixSchema.table("historique_prix", {
+  id: serial("id").primaryKey(),
+  prixFournisseurId: integer("prix_fournisseur_id").notNull().references(() => prixFournisseurs.id),
+  prixHtAncien: real("prix_ht_ancien").notNull(),
+  prixHtNouveau: real("prix_ht_nouveau").notNull(),
+  regimeFiscalAncien: text("regime_fiscal_ancien").notNull(),
+  regimeFiscalNouveau: text("regime_fiscal_nouveau").notNull(),
+  modifiePar: text("modifie_par"),
+  dateModification: timestamp("date_modification").notNull().defaultNow(),
+});
+```
+
+Modifier `shared/schema.ts` :
+```typescript
+// Exporter tous les schemas
+export * from "./schema-referentiel";
+export * from "./schema-prix";
+
+// Table users (reste dans public)
+import { pgTable, text, serial, boolean, timestamp } from "drizzle-orm/pg-core";
+
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
+  nom: text("nom").notNull(),
+  email: text("email").notNull().unique(),
+  role: text("role").notNull().default("utilisateur"),
+  actif: boolean("actif").notNull().default(true),
+  derniereConnexion: timestamp("derniere_connexion"),
+  dateCreation: timestamp("date_creation").notNull().defaultNow(),
+});
+```
+
+---
+
+### ÉTAPE 6 : ADAPTER LES ROUTES
+
+Modifier `server/routes.ts` pour utiliser les nouveaux schemas :
+```typescript
+import { produitsMaster, categories, unites, REGIMES_FISCAUX } from "@shared/schema";
+import { fournisseurs, prixFournisseurs, historiquePrix } from "@shared/schema";
+
+// GET /api/referentiel/produits
+app.get("/api/referentiel/produits", authOrScope("referentiel:read"), async (req, res) => {
+  const produits = await db.select().from(produitsMaster);
+  res.json({ produits });
+});
+
+// POST /api/referentiel/produits
+app.post("/api/referentiel/produits", authOrScope("referentiel:write"), async (req, res) => {
+  const data = insertProduitMasterSchema.parse({
+    ...req.body,
+    creePar: req.session?.userName || 'Système',
+  });
+  
+  const produit = await db.insert(produitsMaster).values(data).returning();
+  res.status(201).json(produit[0]);
+});
+
+// GET /api/fournisseurs
+app.get("/api/fournisseurs", authOrScope("prix:read"), async (req, res) => {
+  const list = await db.select().from(fournisseurs);
+  res.json(list);
+});
+
+// POST /api/prix/produits/:id/fournisseurs
+app.post("/api/prix/produits/:id/fournisseurs", authOrScope("prix:write"), async (req, res) => {
+  const { fournisseur_id, prix_ht, regime_fiscal } = req.body;
+  
+  // Calculer prix TTC/BRS
+  let prixTtc = prix_ht;
+  let prixBrs = prix_ht;
+  
+  if (regime_fiscal === "tva_18") {
+    prixTtc = prix_ht * 1.18;
+  } else if (regime_fiscal === "brs_5") {
+    prixBrs = prix_ht * 1.05;
+  }
+  
+  const [prix] = await db.insert(prixFournisseurs).values({
+    produitMasterId: parseInt(req.params.id),
+    fournisseurId: fournisseur_id,
+    prixHt: prix_ht,
+    regimeFiscal: regime_fiscal,
+    prixTtc,
+    prixBrs,
+    creePar: req.session?.userName || 'Système',
+    actif: true,
+  }).returning();
+  
+  res.status(201).json(prix);
+});
+
+// PATCH /api/prix/fournisseurs/:id
+app.patch("/api/prix/fournisseurs/:id", authOrScope("prix:write"), async (req, res) => {
+  const { prix_ht, regime_fiscal } = req.body;
+  
+  // SET LOCAL pour trigger
+  await db.execute(sql`SET LOCAL app.current_user = ${req.session?.userName || 'Système'}`);
+  
+  // Calculer prix
+  let prixTtc = prix_ht;
+  let prixBrs = prix_ht;
+  
+  if (regime_fiscal === "tva_18") {
+    prixTtc = prix_ht * 1.18;
+  } else if (regime_fiscal === "brs_5") {
+    prixBrs = prix_ht * 1.05;
+  }
+  
+  const [prix] = await db
+    .update(prixFournisseurs)
+    .set({
+      prixHt: prix_ht,
+      regimeFiscal: regime_fiscal,
+      prixTtc,
+      prixBrs,
+      dateModification: new Date(),
+    })
+    .where(eq(prixFournisseurs.id, parseInt(req.params.id)))
+    .returning();
+  
+  res.json(prix);
+});
+```
+
+**Adapter TOUTES les routes** qui utilisent `produits`, `fournisseurs`, `prix_fournisseurs`.
+
+---
+
+## ✅ CHECKLIST DE VALIDATION
+
+- [ ] Backup créé et vérifié
+- [ ] Schemas `referentiel` et `prix` créés
+- [ ] Tables créées avec indexes
+- [ ] Données migrées (counts identiques)
+- [ ] Schema Drizzle adapté (compilation OK)
+- [ ] Routes API adaptées
+- [ ] App fonctionne (pages produits, fournisseurs, prix)
+- [ ] Création produit fonctionne
+- [ ] Ajout prix fonctionne
+- [ ] Modification prix → historique créé
+- [ ] Audit trail fonctionne (creePar, modifiePar)
+
+---
+
+## ⚠️ ROLLBACK SI PROBLÈME
+
+Si erreur lors de la migration :
+```sql
+-- Les anciennes tables sont toujours dans public
+-- L'app peut revenir aux anciennes routes
+-- Rien n'est supprimé → rollback facile
+```
+
+---
+
+## 🎯 RÉSULTAT ATTENDU
+
+Après ce brief, FP-Referentiel-Produit utilisera :
+- `referentiel.produits_master` au lieu de `public.produits`
+- `prix.fournisseurs` au lieu de `public.fournisseurs`
+- `prix.prix_fournisseurs` au lieu de `public.prix_fournisseurs`
+
+**Les anciennes tables restent intactes** (sécurité).
+
+**DATABASE_URL est prête** pour être partagée avec GestionStockFP (Brief 2B).
