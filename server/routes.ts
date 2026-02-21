@@ -150,18 +150,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/fournisseurs", authOrScope("prix:read"), async (_req, res) => {
+  app.get("/api/fournisseurs", authOrScope("prix:read"), async (req, res) => {
     try {
-      res.json(await storage.getFournisseurs());
+      const includeInactifs = req.query.includeInactifs === "true";
+      res.json(await storage.getFournisseurs(includeInactifs));
     } catch (error) {
       console.error("Error:", error);
       res.status(500).json({ error: "Erreur serveur" });
     }
   });
 
-  app.get("/api/fournisseurs/list", authOrScope("prix:read"), async (_req, res) => {
+  app.get("/api/fournisseurs/list", authOrScope("prix:read"), async (req, res) => {
     try {
-      res.json(await storage.getFournisseurs());
+      const includeInactifs = req.query.includeInactifs === "true";
+      res.json(await storage.getFournisseurs(includeInactifs));
     } catch (error) {
       console.error("Error:", error);
       res.status(500).json({ error: "Erreur serveur" });
@@ -203,11 +205,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.delete("/api/fournisseurs/:id", authOrScope("prix:write"), async (req, res) => {
+  app.patch("/api/fournisseurs/:id/desactiver", authOrScope("prix:write"), async (req, res) => {
     try {
-      const ok = await storage.deleteFournisseur(parseInt(req.params.id));
-      if (!ok) return res.status(404).json({ error: "Fournisseur non trouvé" });
-      res.json({ success: true });
+      const f = await storage.desactiverFournisseur(parseInt(req.params.id));
+      if (!f) return res.status(404).json({ error: "Fournisseur non trouvé" });
+      res.json({ message: "Fournisseur désactivé", fournisseur: f });
+    } catch (error) {
+      console.error("Error:", error);
+      res.status(500).json({ error: "Erreur serveur" });
+    }
+  });
+
+  app.patch("/api/fournisseurs/:id/reactiver", authOrScope("prix:write"), async (req, res) => {
+    try {
+      const f = await storage.reactiverFournisseur(parseInt(req.params.id));
+      if (!f) return res.status(404).json({ error: "Fournisseur non trouvé" });
+      res.json({ message: "Fournisseur réactivé", fournisseur: f });
     } catch (error) {
       console.error("Error:", error);
       res.status(500).json({ error: "Erreur serveur" });

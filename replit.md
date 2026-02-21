@@ -119,6 +119,7 @@ BRS 5%:   prixTtc = null, prixBrs = prixHt / 0.95
 - creePar now accepts body values (creePar/cree_par) from external API calls, with API key name as fallback
 - Dernière MAJ logic: shows price modification date if prices exist, otherwise product modification date
 - Added inactive products management: desactiver/reactiver endpoints, visual distinction in UI, filter checkbox
+- Replaced supplier DELETE with desactiver/reactiver pattern: soft-delete preserving data integrity, checkbox filter, greyed-out styling
 
 ## Previous Changes (2026-02-20)
 - Replaced single-password auth with email/password auth (3 users: Marine, Fatou, Michael)

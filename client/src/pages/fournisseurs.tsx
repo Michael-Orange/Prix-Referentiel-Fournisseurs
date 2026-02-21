@@ -24,20 +24,21 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { formatDate } from "@/lib/utils";
-import { Plus, Pencil, Trash2, Users } from "lucide-react";
+import { Plus, Pencil, Ban, RotateCcw, Users } from "lucide-react";
 import type { FournisseurWithStats } from "@shared/schema";
 
 export default function Fournisseurs() {
   const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [filterRegime, setFilterRegime] = useState<string>("all");
+  const [includeInactifs, setIncludeInactifs] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingFournisseur, setEditingFournisseur] = useState<FournisseurWithStats | null>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState<FournisseurWithStats | null>(null);
+  const [desactiverConfirm, setDesactiverConfirm] = useState<FournisseurWithStats | null>(null);
 
   const [formData, setFormData] = useState({
     nom: "",
@@ -46,11 +47,12 @@ export default function Fournisseurs() {
     email: "",
     adresse: "",
     statutTva: "tva_18",
-    actif: true,
   });
 
+  const fournisseursUrl = includeInactifs ? "/api/fournisseurs?includeInactifs=true" : "/api/fournisseurs";
   const { data: fournisseurs = [], isLoading } = useQuery<FournisseurWithStats[]>({
-    queryKey: ["/api/fournisseurs"],
+    queryKey: ["/api/fournisseurs", { includeInactifs }],
+    queryFn: () => fetch(fournisseursUrl, { credentials: "include" }).then(r => r.json()),
   });
 
   const createMutation = useMutation({
@@ -79,22 +81,34 @@ export default function Fournisseurs() {
     },
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: number) => apiRequest("DELETE", `/api/fournisseurs/${id}`),
+  const desactiverMutation = useMutation({
+    mutationFn: (id: number) => apiRequest("PATCH", `/api/fournisseurs/${id}/desactiver`, {}),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/fournisseurs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-      toast({ title: "Fournisseur supprimé" });
-      setDeleteConfirm(null);
+      toast({ title: "Fournisseur désactivé", description: "Le fournisseur a été désactivé" });
+      setDesactiverConfirm(null);
     },
     onError: () => {
-      toast({ title: "Erreur", description: "Impossible de supprimer le fournisseur", variant: "destructive" });
+      toast({ title: "Erreur", description: "Impossible de désactiver le fournisseur", variant: "destructive" });
+    },
+  });
+
+  const reactiverMutation = useMutation({
+    mutationFn: (id: number) => apiRequest("PATCH", `/api/fournisseurs/${id}/reactiver`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/fournisseurs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      toast({ title: "Fournisseur réactivé", description: "Le fournisseur a été réactivé" });
+    },
+    onError: () => {
+      toast({ title: "Erreur", description: "Impossible de réactiver le fournisseur", variant: "destructive" });
     },
   });
 
   const openCreateDialog = () => {
     setEditingFournisseur(null);
-    setFormData({ nom: "", contact: "", telephone: "", email: "", adresse: "", statutTva: "tva_18", actif: true });
+    setFormData({ nom: "", contact: "", telephone: "", email: "", adresse: "", statutTva: "tva_18" });
     setIsDialogOpen(true);
   };
 
@@ -107,7 +121,6 @@ export default function Fournisseurs() {
       email: f.email || "",
       adresse: f.adresse || "",
       statutTva: f.statutTva,
-      actif: f.actif,
     });
     setIsDialogOpen(true);
   };
@@ -137,7 +150,12 @@ export default function Fournisseurs() {
     {
       key: "nom",
       header: "Nom",
-      render: (f: FournisseurWithStats) => <span className="font-medium" data-testid={`text-fournisseur-${f.id}`}>{f.nom}</span>,
+      render: (f: FournisseurWithStats) => (
+        <div className="flex items-center gap-2">
+          <span className="font-medium" data-testid={`text-fournisseur-${f.id}`}>{f.nom}</span>
+          {!f.actif && <span className="text-xs bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded" data-testid={`badge-inactif-${f.id}`}>Inactif</span>}
+        </div>
+      ),
     },
     {
       key: "regime",
@@ -172,9 +190,15 @@ export default function Fournisseurs() {
           <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); openEditDialog(f); }} data-testid={`button-edit-${f.id}`}>
             <Pencil className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); setDeleteConfirm(f); }} data-testid={`button-delete-${f.id}`}>
-            <Trash2 className="h-4 w-4 text-destructive" />
-          </Button>
+          {f.actif ? (
+            <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); setDesactiverConfirm(f); }} data-testid={`button-desactiver-${f.id}`}>
+              <Ban className="h-4 w-4 text-destructive" />
+            </Button>
+          ) : (
+            <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); reactiverMutation.mutate(f.id); }} data-testid={`button-reactiver-${f.id}`}>
+              <RotateCcw className="h-4 w-4 text-green-600" />
+            </Button>
+          )}
         </div>
       ),
     },
@@ -202,6 +226,14 @@ export default function Fournisseurs() {
             <SelectItem value="brs_5">BRS 5%</SelectItem>
           </SelectContent>
         </Select>
+        <label className="flex items-center gap-2 text-sm cursor-pointer whitespace-nowrap" data-testid="label-include-inactifs">
+          <Checkbox
+            checked={includeInactifs}
+            onCheckedChange={(checked) => setIncludeInactifs(!!checked)}
+            data-testid="checkbox-include-inactifs"
+          />
+          <span className="text-muted-foreground">Afficher inactifs</span>
+        </label>
       </div>
 
       <DataTable
@@ -213,6 +245,7 @@ export default function Fournisseurs() {
         emptyDescription="Commencez par ajouter votre premier fournisseur"
         emptyActionLabel="Ajouter un fournisseur"
         onEmptyAction={openCreateDialog}
+        rowClassName={(f: FournisseurWithStats) => !f.actif ? "opacity-60 bg-gray-50" : ""}
       />
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -264,11 +297,6 @@ export default function Fournisseurs() {
               <Input id="adresse" value={formData.adresse} onChange={(e) => setFormData({ ...formData, adresse: e.target.value })} placeholder="Adresse" data-testid="input-adresse" />
             </div>
 
-            <div className="flex items-center justify-between">
-              <Label htmlFor="actif">Statut actif</Label>
-              <Switch id="actif" checked={formData.actif} onCheckedChange={(checked) => setFormData({ ...formData, actif: checked })} data-testid="switch-actif" />
-            </div>
-
             <DialogFooter>
               <Button type="button" variant="outline" onClick={closeDialog}>Annuler</Button>
               <Button type="submit" disabled={!formData.nom.trim() || createMutation.isPending || updateMutation.isPending} data-testid="button-submit">
@@ -280,12 +308,12 @@ export default function Fournisseurs() {
       </Dialog>
 
       <ConfirmDialog
-        open={!!deleteConfirm}
-        onOpenChange={(open) => !open && setDeleteConfirm(null)}
-        title="Supprimer le fournisseur"
-        description={`Êtes-vous sûr de vouloir supprimer "${deleteConfirm?.nom}" ? Cette action est irréversible.`}
-        confirmLabel="Supprimer"
-        onConfirm={() => deleteConfirm && deleteMutation.mutate(deleteConfirm.id)}
+        open={!!desactiverConfirm}
+        onOpenChange={(open) => !open && setDesactiverConfirm(null)}
+        title="Désactiver le fournisseur"
+        description={`Êtes-vous sûr de vouloir désactiver "${desactiverConfirm?.nom}" ? Il ne sera plus visible par défaut mais ses données seront conservées.`}
+        confirmLabel="Désactiver"
+        onConfirm={() => desactiverConfirm && desactiverMutation.mutate(desactiverConfirm.id)}
         variant="destructive"
       />
     </div>

@@ -27,11 +27,12 @@ import {
 } from "@shared/schema";
 
 export interface IStorage {
-  getFournisseurs(): Promise<FournisseurWithStats[]>;
+  getFournisseurs(includeInactifs?: boolean): Promise<FournisseurWithStats[]>;
   getFournisseur(id: number): Promise<Fournisseur | undefined>;
   createFournisseur(data: InsertFournisseur): Promise<Fournisseur>;
   updateFournisseur(id: number, data: Partial<InsertFournisseur>): Promise<Fournisseur | undefined>;
-  deleteFournisseur(id: number): Promise<boolean>;
+  desactiverFournisseur(id: number): Promise<Fournisseur | undefined>;
+  reactiverFournisseur(id: number): Promise<Fournisseur | undefined>;
 
   getCategories(): Promise<Categorie[]>;
   getUnites(): Promise<Unite[]>;
@@ -66,7 +67,11 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
-  async getFournisseurs(): Promise<FournisseurWithStats[]> {
+  async getFournisseurs(includeInactifs?: boolean): Promise<FournisseurWithStats[]> {
+    const conditions = [];
+    if (!includeInactifs) {
+      conditions.push(eq(fournisseurs.actif, true));
+    }
     const results = await db
       .select({
         id: fournisseurs.id,
@@ -86,6 +91,7 @@ export class DatabaseStorage implements IStorage {
         ), 0)`,
       })
       .from(fournisseurs)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(asc(fournisseurs.nom));
     return results as FournisseurWithStats[];
   }
@@ -105,9 +111,22 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async deleteFournisseur(id: number): Promise<boolean> {
-    const [result] = await db.delete(fournisseurs).where(eq(fournisseurs.id, id)).returning();
-    return !!result;
+  async desactiverFournisseur(id: number): Promise<Fournisseur | undefined> {
+    const [result] = await db
+      .update(fournisseurs)
+      .set({ actif: false })
+      .where(eq(fournisseurs.id, id))
+      .returning();
+    return result;
+  }
+
+  async reactiverFournisseur(id: number): Promise<Fournisseur | undefined> {
+    const [result] = await db
+      .update(fournisseurs)
+      .set({ actif: true })
+      .where(eq(fournisseurs.id, id))
+      .returning();
+    return result;
   }
 
   async getCategories(): Promise<Categorie[]> {
