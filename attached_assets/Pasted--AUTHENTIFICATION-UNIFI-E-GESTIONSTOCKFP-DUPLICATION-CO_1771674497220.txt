@@ -1,0 +1,260 @@
+# AUTHENTIFICATION UNIFIÉE - GESTIONSTOCKFP (DUPLICATION)
+
+## CONTEXTE
+
+Prix-Referentiel a déjà implémenté l'authentification complète. Tu dois maintenant :
+
+1. **COPIER** les fichiers auth depuis Prix-Referentiel
+2. **ADAPTER** les routes pour app Stock
+3. **PARTAGER** les mêmes secrets JWT
+4. **NE PAS** recréer la table users (déjà existe)
+5. **NE PAS** réexécuter init-users (déjà fait)
+
+---
+
+## ÉTAPE 1 : COPIER VARIABLES D'ENVIRONNEMENT
+
+⚠️ **CRITIQUE** : Les secrets doivent être **EXACTEMENT IDENTIQUES** à Prix-Referentiel.
+
+Dans Replit Secrets (GestionStockFP), AJOUTER :
+JWT_SECRET=<copier valeur EXACTE depuis Prix-Referentiel>
+PASSWORD_SECRET_KEY=<copier valeur EXACTE depuis Prix-Referentiel>
+
+⚠️ Si différent → auth cassée entre les 2 apps !
+
+**Comment récupérer les valeurs** :
+1. Ouvrir Prix-Referentiel
+2. Aller dans Secrets
+3. Copier JWT_SECRET
+4. Copier PASSWORD_SECRET_KEY
+5. Coller dans Secrets de GestionStockFP
+
+---
+
+## ÉTAPE 2 : INSTALLER DÉPENDANCES
+
+```bash
+npm install jsonwebtoken crypto-js cookie-parser
+npm install --save-dev @types/jsonwebtoken @types/cookie-parser
+ÉTAPE 3 : COPIER FICHIERS BACKEND
+Depuis Prix-Referentiel, COPIER ces fichiers SANS MODIFICATION :
+Fichiers à copier :
+Prix-Referentiel/                       →  GestionStockFP/
+├─ shared/schema-users.ts               →  shared/schema-users.ts (COPIE EXACTE)
+├─ server/utils/password-crypto.ts      →  server/utils/password-crypto.ts (COPIE EXACTE)
+├─ server/middleware/auth.ts            →  server/middleware/auth.ts (COPIE EXACTE)
+├─ server/routes/auth.ts                →  server/routes/auth.ts (COPIE EXACTE)
+└─ server/routes/users.ts               →  server/routes/users.ts (COPIE EXACTE)
+⚠️ Aucune modification dans ces fichiers, copie exacte.
+ÉTAPE 4 : INTÉGRATION BACKEND
+File: server/index.ts (GestionStockFP)
+4.1 Ajouter imports
+En haut du fichier, AJOUTER :
+import cookieParser from "cookie-parser";
+import authRoutes from "./routes/auth";
+import usersRoutes from "./routes/users";
+import { requireAuth, requireApp } from "./middleware/auth";
+4.2 Ajouter middleware cookieParser
+Juste après app.use(express.json()), AJOUTER :
+app.use(cookieParser());
+4.3 Ajouter routes auth (AVANT routes protégées)
+// Routes publiques auth
+app.use("/api/auth", authRoutes);
+
+// Routes admin users
+app.use("/api/users", usersRoutes);
+4.4 Protéger routes stock existantes
+AVANT vos routes stock existantes, AJOUTER :
+// Protéger toutes routes stock
+app.use("/api/stock/*", requireAuth);
+app.use("/api/stock/*", requireApp('stock'));
+4.5 Protéger routes référentiel (si présentes)
+Si vous avez des routes /api/referentiel/* dans Stock (produits partagés), protéger avec :
+// Produits référentiel accessibles par Stock
+app.use("/api/referentiel/*", requireAuth);
+// Pas de requireApp('prix') car Stock peut lire référentiel
+4.6 Traçabilité : Ajouter user.nom
+Dans TOUTES vos routes de modification (POST/PATCH mouvements, produits, etc.), AJOUTER :
+// Exemple : création mouvement stock
+app.post("/api/stock/mouvements", requireAuth, async (req, res) => {
+  const userName = (req as any).user.nom; // ← AJOUTER
+  
+  await db.insert(mouvementsStock).values({
+    ...data,
+    creePar: userName, // ← AJOUTER
+  });
+});
+
+// Exemple : modification
+app.patch("/api/stock/produits/:id", requireAuth, async (req, res) => {
+  const userName = (req as any).user.nom; // ← AJOUTER
+  
+  await db.update(produits).set({
+    ...updateData,
+    modifiePar: userName, // ← AJOUTER
+    dateModification: new Date(),
+  });
+});
+Répéter pour toutes routes qui créent/modifient des données.
+ÉTAPE 5 : COPIER FICHIERS FRONTEND
+Depuis Prix-Referentiel, COPIER ces fichiers SANS MODIFICATION :
+Fichiers à copier :
+Prix-Referentiel/                              →  GestionStockFP/
+├─ client/src/contexts/AuthContext.tsx         →  client/src/contexts/AuthContext.tsx (COPIE EXACTE)
+├─ client/src/components/ProtectedRoute.tsx    →  client/src/components/ProtectedRoute.tsx (COPIE EXACTE)
+├─ client/src/pages/Login.tsx                  →  client/src/pages/Login.tsx (COPIE EXACTE)
+└─ client/src/pages/Users.tsx                  →  client/src/pages/Users.tsx (COPIE EXACTE)
+⚠️ Aucune modification, copie exacte.
+ÉTAPE 6 : INTÉGRATION FRONTEND
+File: client/src/App.tsx (GestionStockFP)
+6.1 Ajouter imports
+import { AuthProvider } from "@/contexts/AuthContext";
+import Login from "@/pages/Login";
+import ProtectedRoute from "@/components/ProtectedRoute";
+import Users from "@/pages/Users";
+6.2 Wrapper avec AuthProvider
+MODIFIER votre App pour wrapper avec <AuthProvider> :
+function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider> {/* ← AJOUTER */}
+        <Switch>
+          {/* Route publique login */}
+          <Route path="/login" component={Login} />
+          
+          {/* Vos routes existantes → Wrapper avec ProtectedRoute */}
+          <ProtectedRoute path="/" component={VotrePageStockPrincipale} />
+          <ProtectedRoute path="/mouvements" component={Mouvements} />
+          <ProtectedRoute path="/produits" component={Produits} />
+          {/* ... autres routes ... */}
+          
+          {/* Route admin users */}
+          <ProtectedRoute path="/users" component={Users} adminOnly />
+          
+          {/* 404 */}
+          <Route component={() => <div>404 Not Found</div>} />
+        </Switch>
+        <Toaster />
+      </AuthProvider> {/* ← AJOUTER */}
+    </QueryClientProvider>
+  );
+}
+6.3 Remplacer Route par ProtectedRoute
+Pour chaque route protégée, remplacer :
+AVANT :
+<Route path="/mouvements" component={Mouvements} />
+APRÈS :
+<ProtectedRoute path="/mouvements" component={Mouvements} />
+ÉTAPE 7 : NAVIGATION (optionnel)
+Si vous avez une Navbar/Sidebar, ajouter :
+7.1 Lien vers Prix-Referentiel (conditionnel)
+import { useAuth } from "@/contexts/AuthContext";
+
+export function Sidebar() {
+  const { user, canAccessApp, logout, isAdmin } = useAuth();
+  
+  return (
+    <div>
+      {/* Vos liens stock existants */}
+      <Link href="/">Stock</Link>
+      <Link href="/mouvements">Mouvements</Link>
+      
+      {/* Lien vers Prix si autorisé */}
+      {canAccessApp('prix') && (
+        <a href="https://prix-referentiel.votre-url.replit.app" target="_blank">
+          📊 Prix-Référentiel
+        </a>
+      )}
+      
+      {/* Admin users */}
+      {isAdmin && (
+        <Link href="/users">👥 Utilisateurs</Link>
+      )}
+      
+      {/* Logout */}
+      <button onClick={logout}>Déconnexion</button>
+    </div>
+  );
+}
+7.2 Afficher nom user
+import { useAuth } from "@/contexts/AuthContext";
+
+export function Header() {
+  const { user } = useAuth();
+  
+  return (
+    <header>
+      <span>Connecté : <strong>{user?.nom}</strong></span>
+      {user?.role === "admin" && <Badge>Admin</Badge>}
+    </header>
+  );
+}
+ÉTAPE 8 : VÉRIFICATIONS CRITIQUES
+⚠️ NE PAS FAIRE
+❌ NE PAS créer table referentiel.users (déjà existe)
+❌ NE PAS exécuter script init-users.ts
+❌ NE PAS modifier les fichiers copiés (schema-users, auth.ts, etc.)
+❌ NE PAS utiliser requireApp('prix') sur routes stock
+✅ FAIRE
+✅ COPIER exactement JWT_SECRET et PASSWORD_SECRET_KEY
+✅ COPIER tous les fichiers sans modification
+✅ UTILISER requireApp('stock') sur routes stock
+✅ AJOUTER req.user.nom dans toutes modifications
+✅ WRAPPER routes avec <ProtectedRoute>
+TESTS APRÈS IMPLÉMENTATION
+Backend
+ Serveur démarre sans erreur
+ GET /api/auth/usernames → Retourne 3 users (michael, fatou, marine) - pas cheikh car pas accès Prix
+ GET /api/stock/* sans auth → 401
+ GET /api/stock/* avec cookie auth Prix-Referentiel → Fonctionne (cookie partagé)
+Frontend
+ Page /login affiche dropdown avec 4 users (michael, fatou, marine, cheikh)
+ Login michael → Accès app Stock ✅
+ Login cheikh → Accès app Stock ✅
+ Login fatou → Accès app Stock ✅ (car Prix implique Stock)
+ Logout → Redirect /login
+Permissions
+ Admin (michael) voit lien "Utilisateurs" dans menu
+ Users normaux ne voient PAS ce lien
+ Page /users accessible uniquement par michael
+ Cheikh peut créer mouvements → creePar = "Cheikh"
+Inter-apps
+ Login sur Prix-Referentiel → Cookie valide aussi sur Stock
+ Login sur Stock → Cookie valide aussi sur Prix-Referentiel (pour ceux qui ont accès)
+ Logout sur une app → Déconnecté sur les 2 (cookie cleared)
+DIFFÉRENCES vs PRIX-REFERENTIEL
+La SEULE différence dans le code :
+Prix-Referentiel utilise :
+app.use("/api/referentiel/*", requireApp('prix'));
+app.use("/api/prix/*", requireApp('prix'));
+GestionStockFP utilise :
+app.use("/api/stock/*", requireApp('stock'));
+// Pas de requireApp('prix') car tous les users Stock n'ont pas forcément Prix
+Tout le reste est IDENTIQUE.
+CHECKLIST FINALE
+Avant de valider :
+Backend :
+ Secrets JWT copiés exactement
+ Dépendances installées
+ 5 fichiers backend copiés
+ cookieParser ajouté dans index.ts
+ Routes auth ajoutées
+ Routes stock protégées avec requireAuth + requireApp('stock')
+ user.nom ajouté dans routes modification
+Frontend :
+ 4 fichiers frontend copiés
+ AuthProvider wrapper dans App.tsx
+ Routes wrapped avec ProtectedRoute
+ Navigation mise à jour (optionnel)
+Tests :
+ Tous tests backend passent
+ Tous tests frontend passent
+ Tests permissions OK
+ Tests inter-apps OK
+SUPPORT
+Si problèmes :
+Vérifier secrets env identiques (JWT_SECRET, PASSWORD_SECRET_KEY)
+Vérifier table users existe (1 seule fois dans referentiel)
+Vérifier cookies envoyés (DevTools → Application → Cookies)
+Vérifier logs serveur (erreurs JWT, décryptage)
+Tester route auth isolée (GET /api/auth/usernames)
