@@ -1,0 +1,169 @@
+Parfait, tu as raison de rester prudent. Voici le brief adapté :
+
+---
+
+# BRIEF ADAPTÉ : Validation connexion DB (sans changer le driver)
+
+## OBJECTIF
+
+Ajouter validation du hostname au démarrage pour garantir connexion à la bonne base, **SANS modifier le driver existant** (pg reste).
+
+---
+
+## IMPLÉMENTATION
+
+### Modifier server/db.ts
+
+AJOUTER la validation au début du fichier, **AVANT** la création du pool :
+
+```typescript
+import { Pool } from 'pg';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { produitsMaster, categories, fournisseurs } from '../shared/schema';
+
+// ← AJOUTER : Validation connexion
+const connectionString = process.env.DATABASE_URL || process.env.REFERENTIEL_DATABASE_URL;
+
+if (!connectionString) {
+  throw new Error('❌ DATABASE_URL ou REFERENTIEL_DATABASE_URL manquant dans Replit Secrets');
+}
+
+// Extraire hostname pour validation
+let hostname: string;
+try {
+  const dbUrl = new URL(connectionString);
+  hostname = dbUrl.hostname;
+} catch (error) {
+  throw new Error('❌ Format DATABASE_URL invalide');
+}
+
+// Valider hostname attendu
+const EXPECTED_HOSTNAME = 'ep-flat-wave-ai8s9lqh-pooler.c-4.us-east-1.aws.neon.tech';
+
+if (hostname !== EXPECTED_HOSTNAME) {
+  console.error(`\n❌ ERREUR CRITIQUE : Connexion à une mauvaise base de données !`);
+  console.error(`   Hostname attendu : ${EXPECTED_HOSTNAME}`);
+  console.error(`   Hostname actuel  : ${hostname}`);
+  console.error(`\n   Vérifier DATABASE_URL dans Replit Secrets.\n`);
+  throw new Error('Base de données incorrecte - arrêt de l\'application');
+}
+
+console.log(`✅ Connexion validée : ${hostname}`);
+// ← FIN VALIDATION
+
+// Reste du code existant (ne pas modifier)
+export const pool = new Pool({
+  connectionString,
+  ssl: { rejectUnauthorized: false },
+});
+
+export const db = drizzle(pool, {
+  schema: { produitsMaster, categories, fournisseurs },
+});
+Points clés :
+Garder pool et db exportés (code existant les utilise)
+Garder le driver pg (pas de changement)
+Juste ajouter validation avant création pool
+Crash immédiat si mauvais hostname
+FICHIERS À CRÉER (DOCUMENTATION)
+1. .env.example
+File: .env.example (CRÉER à la racine)
+# Base de données PostgreSQL Neon (PRODUCTION)
+# Hostname : ep-flat-wave-ai8s9lqh-pooler.c-4.us-east-1.aws.neon.tech
+DATABASE_URL=postgresql://user:password@ep-flat-wave-ai8s9lqh-pooler.c-4.us-east-1.aws.neon.tech:5432/neondb
+
+# Authentification JWT (doit être IDENTIQUE entre Prix et Stock)
+JWT_SECRET=generer-secret-32-caracteres-aleatoires
+PASSWORD_SECRET_KEY=generer-secret-32-caracteres-aleatoires
+
+# Notes importantes :
+# - DATABASE_URL doit pointer vers la MÊME base dans Stock et Prix-Referentiel
+# - JWT_SECRET et PASSWORD_SECRET_KEY doivent être IDENTIQUES entre les 2 apps
+# - Ne JAMAIS commiter ce fichier avec les vraies valeurs
+2. Documentation DB
+File: docs/DATABASE.md (CRÉER dossier docs/ si nécessaire)
+# Configuration Base de Données
+
+## Architecture
+
+Prix-Referentiel et GestionStockFP partagent **LA MÊME** base PostgreSQL Neon.
+
+### Hostname production
+ep-flat-wave-ai8s9lqh-pooler.c-4.us-east-1.aws.neon.tech
+
+### Secret Replit
+DATABASE_URL=postgresql://...@ep-flat-wave-ai8s9lqh-pooler...
+
+⚠️ **Important** : Ce secret doit être **identique** dans les 2 apps (Stock et Prix).
+
+## Schémas
+neondb
+├─ schema: referentiel
+│  ├─ produits_master (partagé entre Stock et Prix)
+│  ├─ categories
+│  └─ fournisseurs
+├─ schema: stock
+│  ├─ stock_produits
+│  ├─ mouvements
+│  └─ categories
+└─ schema: prix
+└─ prix_fournisseurs
+
+## Validation au démarrage
+
+L'application vérifie automatiquement au démarrage qu'elle est connectée à la bonne base.
+
+**Si mauvais hostname** → Crash immédiat avec message d'erreur explicite.
+
+**Log attendu au démarrage** :
+✅ Connexion validée : ep-flat-wave-ai8s9lqh-pooler.c-4.us-east-1.aws.neon.tech
+
+## Bases décommissionnées
+
+- ❌ `ep-dark-forest-afyuubzt` : Ancienne base de dev (NE PLUS UTILISER)
+- ❌ Toute autre base : Vérifier avec l'équipe avant utilisation
+
+## Troubleshooting
+
+### Erreur "Base de données incorrecte"
+
+Si au démarrage l'app affiche :
+❌ ERREUR CRITIQUE : Connexion à une mauvaise base de données !
+
+**Solution** :
+1. Aller dans Replit Tools → Secrets
+2. Vérifier DATABASE_URL pointe vers `ep-flat-wave-ai8s9lqh...`
+3. Supprimer tout autre secret DB (NEON_DATABASE_URL, etc.)
+4. Redémarrer l'app
+
+### Deux apps voient des données différentes
+
+**Cause** : Une des deux apps est connectée à une base différente.
+
+**Solution** :
+1. Vérifier les logs au démarrage des 2 apps
+2. Les deux doivent afficher le même hostname
+3. Si différent, corriger DATABASE_URL dans Secrets
+TESTS
+Après modification :
+Test 1 : Démarrage normal
+ Arrêter l'app
+ Redémarrer
+ Vérifier log : ✅ Connexion validée : ep-flat-wave...
+ Aucune erreur
+Test 2 : Détection mauvaise base (optionnel)
+ Dans Secrets, modifier temporairement DATABASE_URL (hostname bidon)
+ Redémarrer l'app
+ ✅ Devrait crasher immédiatement avec message d'erreur clair
+ Remettre la bonne valeur
+Test 3 : Fonctionnalités existantes
+ Créer un produit
+ Modifier un produit
+ Vérifier que tout fonctionne normalement
+CHECKLIST
+ Validation ajoutée dans server/db.ts (avant création pool)
+ .env.example créé
+ docs/DATABASE.md créé
+ Test démarrage : log "✅ Connexion validée" visible
+ Aucune erreur au démarrage
+ Fonctionnalités existantes OK

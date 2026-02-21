@@ -1,0 +1,66 @@
+# BRIEF : Nettoyage et validation connexion DB
+
+## OBJECTIF
+
+Nettoyer les secrets DB et ajouter validation au démarrage pour garantir connexion à la bonne base.
+
+## ACTIONS
+
+### 1. Modifier server/db.ts
+
+REMPLACER le code actuel par :
+
+```typescript
+import { drizzle } from 'drizzle-orm/neon-http';
+import { neon } from '@neondatabase/serverless';
+
+const connectionString = process.env.DATABASE_URL;
+
+if (!connectionString) {
+  throw new Error('❌ DATABASE_URL non définie. Vérifier Replit Secrets.');
+}
+
+// Validation hostname
+const dbUrl = new URL(connectionString);
+const hostname = dbUrl.hostname;
+const EXPECTED_HOSTNAME = 'ep-flat-wave-ai8s9lqh-pooler.c-4.us-east-1.aws.neon.tech';
+
+if (hostname !== EXPECTED_HOSTNAME) {
+  console.error(`❌ ERREUR : Mauvaise base de données !`);
+  console.error(`   Attendu : ${EXPECTED_HOSTNAME}`);
+  console.error(`   Actuel  : ${hostname}`);
+  throw new Error('Connexion à une base incorrecte - vérifier DATABASE_URL');
+}
+
+console.log(`✅ Base de données : ${hostname}`);
+
+const sql = neon(connectionString);
+export const db = drizzle(sql);
+2. Créer .env.example
+File: .env.example
+# Base de données PostgreSQL Neon (PRODUCTION)
+DATABASE_URL=postgresql://user:password@ep-flat-wave-ai8s9lqh-pooler.c-4.us-east-1.aws.neon.tech:5432/neondb
+
+# Auth JWT (identique entre Stock et Prix)
+JWT_SECRET=generer-secret-32-chars
+PASSWORD_SECRET_KEY=generer-secret-32-chars
+3. Créer documentation
+File: docs/DATABASE.md
+# Configuration Base de Données
+
+## Base partagée
+
+Prix-Referentiel et GestionStockFP partagent la MÊME base Neon :
+- Hostname : `ep-flat-wave-ai8s9lqh-pooler.c-4.us-east-1.aws.neon.tech`
+- Secret : `DATABASE_URL` (identique dans les 2 apps)
+
+## Validation
+
+Au démarrage, l'app vérifie le hostname de connexion.
+Si mauvais hostname → Crash avec erreur explicite.
+4. Tests
+ Démarrer l'app
+ Vérifier log : "✅ Base de données : ep-flat-wave..."
+ Tester création produit
+ Vérifier que Stock voit le même produit
+Proceed!
