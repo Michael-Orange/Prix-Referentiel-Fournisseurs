@@ -1,0 +1,386 @@
+
+# BRIEF : Gestion Produits Inactifs
+
+## 🎯 OBJECTIF
+Permettre de désactiver des produits (créés par erreur) et les masquer par défaut, avec option pour les afficher.
+
+## 📋 RÈGLES MÉTIER
+
+### Produit inactif = masqué par défaut
+- ❌ N'apparaît PAS dans la liste produits (par défaut)
+- ❌ N'apparaît PAS dans les résultats de recherche
+- ❌ N'apparaît PAS dans les sélecteurs (création prix, etc.)
+- ❌ Ne peut PAS être marqué comme stockable (`est_stockable = false` forcé)
+
+### Affichage des inactifs (optionnel)
+- ✅ Filtre "Afficher inactifs" dans la barre de recherche
+- ✅ Quand activé → produits inactifs affichés en grisé avec badge "Inactif"
+- ✅ Possibilité de réactiver un produit inactif
+
+---
+
+## 🛠️ IMPLÉMENTATION
+
+### 1. Colonne `actif` (existe déjà ✅)
+
+La colonne existe déjà dans `referentiel.produits_master` :
+```typescript
+actif: boolean("actif").notNull().default(true)
+```
+
+Pas de modification schema nécessaire.
+
+---
+
+### 2. Backend : Filtrer par défaut
+
+#### Modifier GET /api/referentiel/produits
+
+```typescript
+app.get("/api/referentiel/produits", authOrScope("referentiel:read"), async (req, res) => {
+  const { includeInactifs } = req.query; // Query param optionnel
+  
+  let query = db
+    .select()
+    .from(produitsMaster)
+    .orderBy(produitsMaster.nom);
+  
+  // Par défaut, exclure inactifs
+  if (includeInactifs !== "true") {
+    query = query.where(eq(produitsMaster.actif, true));
+  }
+  
+  const produits = await query;
+  res.json({ produits });
+});
+```
+
+#### Nouvelle route : Désactiver produit
+
+```typescript
+app.patch("/api/referentiel/produits/:id/desactiver", authOrScope("referentiel:write"), async (req, res) => {
+  const { id } = req.params;
+  
+  try {
+    // Désactiver le produit
+    const [produit] = await db
+      .update(produitsMaster)
+      .set({
+        actif: false,
+        estStockable: false, // Forcer non-stockable
+        dateModification: new Date(),
+      })
+      .where(eq(produitsMaster.id, parseInt(id)))
+      .returning();
+    
+    if (!produit) {
+      return res.status(404).json({ error: "Produit introuvable" });
+    }
+    
+    res.json({ message: "Produit désactivé", produit });
+  } catch (error) {
+    console.error("Erreur désactivation:", error);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+```
+
+#### Nouvelle route : Réactiver produit
+
+```typescript
+app.patch("/api/referentiel/produits/:id/reactiver", authOrScope("referentiel:write"), async (req, res) => {
+  const { id } = req.params;
+  
+  try {
+    const [produit] = await db
+      .update(produitsMaster)
+      .set({
+        actif: true,
+        dateModification: new Date(),
+        // estStockable reste à false (manuel après si besoin)
+      })
+      .where(eq(produitsMaster.id, parseInt(id)))
+      .returning();
+    
+    if (!produit) {
+      return res.status(404).json({ error: "Produit introuvable" });
+    }
+    
+    res.json({ message: "Produit réactivé", produit });
+  } catch (error) {
+    console.error("Erreur réactivation:", error);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+```
+
+---
+
+### 3. Frontend : Filtre "Afficher inactifs"
+
+#### Dans la page Produits & Prix
+
+**Ajouter un toggle dans la barre de recherche :**
+
+```tsx
+const [includeInactifs, setIncludeInactifs] = useState(false);
+
+// Query produits avec filtre
+const { data: produits } = useQuery({
+  queryKey: ['produits', includeInactifs],
+  queryFn: async () => {
+    const url = `/api/referentiel/produits${includeInactifs ? '?includeInactifs=true' : ''}`;
+    const res = await fetch(url);
+    return res.json();
+  },
+});
+
+// UI
+<div className="flex items-center justify-between mb-4">
+  <div className="flex items-center space-x-4">
+    {/* Barre de recherche existante */}
+    <Input
+      placeholder="Rechercher un produit..."
+      value={search}
+      onChange={(e) => setSearch(e.target.value)}
+    />
+    
+    {/* NOUVEAU : Toggle inactifs */}
+    <label className="flex items-center space-x-2 text-sm cursor-pointer">
+      <Checkbox
+        checked={includeInactifs}
+        onCheckedChange={setIncludeInactifs}
+      />
+      <span className="text-gray-700">Afficher inactifs</span>
+    </label>
+  </div>
+  
+  <Button onClick={() => setModalOpen(true)}>
+    Nouveau produit
+  </Button>
+</div>
+```
+
+---
+
+### 4. Frontend : Affichage produits inactifs
+
+**Dans la liste produits :**
+
+```tsx
+{produits.map((produit) => (
+  <TableRow 
+    key={produit.id}
+    className={!produit.actif ? 'bg-gray-50 opacity-60' : ''}
+  >
+    <TableCell>
+      <div className="flex items-center space-x-2">
+        <span className={!produit.actif ? 'text-gray-500 line-through' : ''}>
+          {produit.nom}
+        </span>
+        {!produit.actif && (
+          <Badge variant="secondary" className="bg-gray-300 text-gray-700">
+            Inactif
+          </Badge>
+        )}
+      </div>
+    </TableCell>
+    <TableCell>{produit.categorie}</TableCell>
+    <TableCell>
+      {/* Actions */}
+      {produit.actif ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => handleDesactiver(produit.id)}
+        >
+          <XCircle className="w-4 h-4 text-red-600" />
+          Désactiver
+        </Button>
+      ) : (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => handleReactiver(produit.id)}
+        >
+          <CheckCircle className="w-4 h-4 text-green-600" />
+          Réactiver
+        </Button>
+      )}
+    </TableCell>
+  </TableRow>
+))}
+```
+
+---
+
+### 5. Frontend : Actions désactiver/réactiver
+
+```tsx
+const desactiverMutation = useMutation({
+  mutationFn: async (produitId: number) => {
+    const res = await fetch(`/api/referentiel/produits/${produitId}/desactiver`, {
+      method: 'PATCH',
+      credentials: 'include',
+    });
+    if (!res.ok) throw new Error('Erreur désactivation');
+    return res.json();
+  },
+  onSuccess: () => {
+    queryClient.invalidateQueries(['produits']);
+    toast({ title: 'Produit désactivé' });
+  },
+  onError: () => {
+    toast({ title: 'Erreur', variant: 'destructive' });
+  },
+});
+
+const reactiverMutation = useMutation({
+  mutationFn: async (produitId: number) => {
+    const res = await fetch(`/api/referentiel/produits/${produitId}/reactiver`, {
+      method: 'PATCH',
+      credentials: 'include',
+    });
+    if (!res.ok) throw new Error('Erreur réactivation');
+    return res.json();
+  },
+  onSuccess: () => {
+    queryClient.invalidateQueries(['produits']);
+    toast({ title: 'Produit réactivé' });
+  },
+});
+
+const handleDesactiver = (id: number) => {
+  if (confirm('Désactiver ce produit ? Il sera masqué par défaut.')) {
+    desactiverMutation.mutate(id);
+  }
+};
+
+const handleReactiver = (id: number) => {
+  reactiverMutation.mutate(id);
+};
+```
+
+---
+
+### 6. Validation : Empêcher stockable si inactif
+
+**Dans POST /api/referentiel/produits :**
+
+```typescript
+app.post("/api/referentiel/produits", authOrScope("referentiel:write"), async (req, res) => {
+  const { estStockable, ...data } = req.body;
+  
+  // Si produit créé inactif → forcer estStockable = false
+  const stockable = data.actif === false ? false : estStockable;
+  
+  const [produit] = await db.insert(produitsMaster).values({
+    ...data,
+    estStockable: stockable,
+    creePar: req.session?.userName || 'Système',
+  }).returning();
+  
+  res.status(201).json(produit);
+});
+```
+
+**Dans PATCH /api/referentiel/produits/:id :**
+
+```typescript
+app.patch("/api/referentiel/produits/:id", authOrScope("referentiel:write"), async (req, res) => {
+  const { id } = req.params;
+  const updates = req.body;
+  
+  // Si on désactive → forcer estStockable = false
+  if (updates.actif === false) {
+    updates.estStockable = false;
+  }
+  
+  const [produit] = await db
+    .update(produitsMaster)
+    .set({
+      ...updates,
+      dateModification: new Date(),
+    })
+    .where(eq(produitsMaster.id, parseInt(id)))
+    .returning();
+  
+  res.json(produit);
+});
+```
+
+---
+
+## 🎨 DESIGN
+
+### Produit actif (normal)
+```
+┌──────────────────────────────────────────┐
+│ Tuyau PVC DN63                           │
+│ Plomberie-Tuyauterie                     │
+│ [👁 Voir] [✏️ Modifier] [❌ Désactiver]  │
+└──────────────────────────────────────────┘
+```
+
+### Produit inactif (grisé, ligne barrée)
+```
+┌──────────────────────────────────────────┐
+│ Tuyau PVC DN63  [Badge: Inactif]        │  ← Grisé, ligne barrée
+│ Plomberie-Tuyauterie                     │
+│ [👁 Voir] [✅ Réactiver]                 │
+└──────────────────────────────────────────┘
+```
+
+### Filtre dans barre de recherche
+```
+┌─────────────────────────────────────────────────────────┐
+│ [🔍 Rechercher...] [☑ Afficher inactifs] [+ Nouveau]   │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
+## ✅ CHECKLIST VALIDATION
+
+**Backend :**
+- [ ] GET /api/referentiel/produits filtre `actif=true` par défaut
+- [ ] Query param `?includeInactifs=true` inclut les inactifs
+- [ ] PATCH /desactiver met `actif=false` et `est_stockable=false`
+- [ ] PATCH /reactiver met `actif=true` (stockable reste false)
+- [ ] POST/PATCH empêchent `est_stockable=true` si `actif=false`
+
+**Frontend :**
+- [ ] Checkbox "Afficher inactifs" visible dans barre recherche
+- [ ] Par défaut décoché (inactifs masqués)
+- [ ] Produits inactifs affichés grisés avec badge "Inactif"
+- [ ] Bouton "Désactiver" visible sur produits actifs
+- [ ] Bouton "Réactiver" visible sur produits inactifs
+- [ ] Confirmation avant désactivation
+
+**Tests :**
+- [ ] Créer produit "Test Désactivation" → apparaît dans liste
+- [ ] Cliquer "Désactiver" → disparaît de la liste
+- [ ] Cocher "Afficher inactifs" → réapparaît grisé avec badge
+- [ ] Cliquer "Réactiver" → redevient normal
+- [ ] Vérifier en BDD : `SELECT actif, est_stockable FROM referentiel.produits_master WHERE nom = 'Test Désactivation'`
+
+**Edge cases :**
+- [ ] Désactiver produit avec prix existants → OK (prix restent, juste produit masqué)
+- [ ] Réactiver produit → prix redeviennent visibles
+- [ ] Produit inactif ne peut PAS être marqué stockable (validation backend)
+
+---
+
+## 📝 NOTES
+
+### Cascade sur prix ?
+**Non recommandé.** Si un produit est désactivé, ses prix restent en base (historique).
+Ils seront juste masqués car le produit parent est inactif.
+
+### Soft delete
+C'est exactement ce qu'on fait : `actif=false` au lieu de `DELETE`.
+Les données restent pour historique/audit.
+
+### Réactivation
+Un admin peut réactiver un produit désactivé par erreur.
+Le flag `est_stockable` reste à `false` par sécurité (à réactiver manuellement si besoin).
