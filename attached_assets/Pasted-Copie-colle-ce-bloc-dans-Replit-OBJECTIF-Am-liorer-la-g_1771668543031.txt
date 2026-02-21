@@ -1,0 +1,524 @@
+Copie-colle ce bloc dans Replit :
+# OBJECTIF
+Améliorer la gestion des catégories et sous-sections avec :
+1. Bouton ajout catégorie dans page Catégories
+2. Sous-section en menu déroulant (au lieu de texte libre)
+3. Colonne Sous-section éditable dans tableau produits
+
+# PARTIE 1 : AJOUT BOUTON CRÉATION CATÉGORIE
+
+File: client/src/pages/categories.tsx
+
+## 1. Ajouter état pour le dialog
+
+Au début du composant, après les états existants :
+
+```typescript
+const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+const [newCategorie, setNewCategorie] = useState({
+  nom: "",
+  sousSection: "",
+});
+2. Ajouter mutation création catégorie
+Après les mutations existantes :
+const createCategorieMutation = useMutation({
+  mutationFn: async (data: { nom: string; sousSection?: string }) => {
+    // Créer la catégorie
+    const categorie = await apiRequest("POST", "/api/referentiel/categories", {
+      nom: data.nom,
+    });
+    
+    // Si sous-section fournie et != "Tous", la créer
+    if (data.sousSection && data.sousSection.trim() !== "" && data.sousSection !== "Tous") {
+      await apiRequest("POST", "/api/referentiel/sous-sections", {
+        nom: data.sousSection,
+        categorie_id: categorie.id,
+      });
+    }
+    
+    return categorie;
+  },
+  onSuccess: () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/referentiel/categories"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/referentiel/sous-sections"] });
+    toast({ title: "Catégorie créée avec succès" });
+    setIsAddDialogOpen(false);
+    setNewCategorie({ nom: "", sousSection: "" });
+  },
+  onError: (error: any) => {
+    toast({ 
+      title: "Erreur", 
+      description: error.message || "Impossible de créer la catégorie", 
+      variant: "destructive" 
+    });
+  },
+});
+3. Ajouter bouton "Ajouter une catégorie"
+Juste AVANT la grille de catégories (avant le mapping des cartes) :
+<div className="mb-6 flex justify-between items-center">
+  <div>
+    <h2 className="text-2xl font-bold">Catégories</h2>
+    <p className="text-sm text-gray-500">9 catégories de produits</p>
+  </div>
+  
+  <Button 
+    onClick={() => setIsAddDialogOpen(true)}
+    className="bg-blue-600 hover:bg-blue-700"
+  >
+    <Plus className="h-4 w-4 mr-2" />
+    Ajouter une catégorie
+  </Button>
+</div>
+Import manquant :
+import { Plus } from "lucide-react";
+4. Ajouter Dialog de création
+À la fin du composant, AVANT la fermeture du fragment ou div principal :
+<Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+  <DialogContent>
+    <DialogHeader>
+      <DialogTitle>Nouvelle catégorie</DialogTitle>
+      <DialogDescription>
+        Créez une nouvelle catégorie de produits. Vous pouvez optionnellement ajouter une sous-section.
+      </DialogDescription>
+    </DialogHeader>
+    
+    <div className="space-y-4 py-4">
+      <div>
+        <Label htmlFor="nom-categorie">Nom de la catégorie *</Label>
+        <Input
+          id="nom-categorie"
+          placeholder="Ex: Plomberie et Irrigation"
+          value={newCategorie.nom}
+          onChange={(e) => setNewCategorie({ ...newCategorie, nom: e.target.value })}
+          autoFocus
+        />
+      </div>
+      
+      <div>
+        <Label htmlFor="sous-section">Sous-section (optionnel)</Label>
+        <Input
+          id="sous-section"
+          placeholder="Ex: Tubes PVC ou laissez vide"
+          value={newCategorie.sousSection}
+          onChange={(e) => setNewCategorie({ ...newCategorie, sousSection: e.target.value })}
+        />
+        <p className="text-xs text-muted-foreground mt-1">
+          Laissez vide ou écrivez "Tous" pour ne pas créer de sous-section
+        </p>
+      </div>
+    </div>
+    
+    <DialogFooter>
+      <Button 
+        variant="outline" 
+        onClick={() => {
+          setIsAddDialogOpen(false);
+          setNewCategorie({ nom: "", sousSection: "" });
+        }}
+      >
+        Annuler
+      </Button>
+      <Button 
+        onClick={() => createCategorieMutation.mutate(newCategorie)}
+        disabled={!newCategorie.nom.trim() || createCategorieMutation.isPending}
+      >
+        {createCategorieMutation.isPending ? "Création..." : "Créer"}
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
+Imports manquants :
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+5. Routes backend (si manquantes)
+File: server/routes.ts
+Route POST catégorie
+// POST /api/referentiel/categories - Créer catégorie
+app.post("/api/referentiel/categories", async (req, res) => {
+  try {
+    const { nom } = req.body;
+    
+    if (!nom || nom.trim() === "") {
+      return res.status(400).json({ error: "Nom de catégorie requis" });
+    }
+    
+    // Vérifier doublon
+    const [existing] = await db
+      .select()
+      .from(categories)
+      .where(eq(categories.nom, nom.trim()))
+      .limit(1);
+    
+    if (existing) {
+      return res.status(400).json({ error: "Cette catégorie existe déjà" });
+    }
+    
+    // Récupérer l'ordre max actuel
+    const maxOrdre = await db
+      .select({ max: sql<number>`MAX(${categories.ordre})` })
+      .from(categories);
+    
+    const nextOrdre = (maxOrdre[0]?.max || 0) + 1;
+    
+    const [categorie] = await db
+      .insert(categories)
+      .values({
+        nom: nom.trim(),
+        ordre: nextOrdre,
+        estStockable: true,  // Par défaut stockable
+      })
+      .returning();
+    
+    res.json(categorie);
+  } catch (error: any) {
+    console.error("Erreur création catégorie:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+Route POST sous-section
+// POST /api/referentiel/sous-sections - Créer sous-section
+app.post("/api/referentiel/sous-sections", async (req, res) => {
+  try {
+    const { nom, categorie_id } = req.body;
+    
+    if (!nom || nom.trim() === "") {
+      return res.status(400).json({ error: "Nom de sous-section requis" });
+    }
+    
+    if (!categorie_id) {
+      return res.status(400).json({ error: "Catégorie ID requis" });
+    }
+    
+    // Vérifier que la catégorie existe
+    const [cat] = await db
+      .select()
+      .from(categories)
+      .where(eq(categories.id, categorie_id))
+      .limit(1);
+    
+    if (!cat) {
+      return res.status(404).json({ error: "Catégorie introuvable" });
+    }
+    
+    // Vérifier doublon pour cette catégorie
+    const [existing] = await db
+      .select()
+      .from(sousSections)
+      .where(
+        and(
+          eq(sousSections.nom, nom.trim()),
+          eq(sousSections.categorieId, categorie_id)
+        )
+      )
+      .limit(1);
+    
+    if (existing) {
+      return res.status(400).json({ 
+        error: "Cette sous-section existe déjà pour cette catégorie" 
+      });
+    }
+    
+    const [sousSection] = await db
+      .insert(sousSections)
+      .values({
+        nom: nom.trim(),
+        categorieId: categorie_id,
+      })
+      .returning();
+    
+    res.json(sousSection);
+  } catch (error: any) {
+    console.error("Erreur création sous-section:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+PARTIE 2 : SOUS-SECTION EN MENU DÉROULANT (CRÉATION PRODUIT)
+File: client/src/pages/produits.tsx
+1. Charger les sous-sections
+Ajouter query pour récupérer toutes les sous-sections :
+const { data: sousSections = [] } = useQuery({
+  queryKey: ["/api/referentiel/sous-sections"],
+  queryFn: () => apiRequest("GET", "/api/referentiel/sous-sections"),
+});
+2. Filtrer sous-sections par catégorie
+Créer un helper pour obtenir les sous-sections d'une catégorie :
+const getSousSectionsForCategorie = (categorieNom: string) => {
+  return sousSections.filter((ss: any) => ss.categorie === categorieNom);
+};
+Note: Cela suppose que l'API retourne les sous-sections avec le nom de catégorie (JOIN).
+3. Modifier le formulaire d'ajout produit
+Localiser le dialog d'ajout produit, dans le champ Sous-section :
+REMPLACER :
+<Input
+  id="sous-section"
+  placeholder="Ex: Tubes PVC"
+  value={newProduct.sousSection || ""}
+  onChange={(e) => setNewProduct({ ...newProduct, sousSection: e.target.value })}
+/>
+PAR :
+<Select
+  value={newProduct.sousSection || "Tous"}
+  onValueChange={(v) => setNewProduct({ 
+    ...newProduct, 
+    sousSection: v === "Tous" ? "" : v 
+  })}
+  disabled={!newProduct.categorie}
+>
+  <SelectTrigger>
+    <SelectValue placeholder="Choisir une sous-section..." />
+  </SelectTrigger>
+  <SelectContent>
+    <SelectItem value="Tous">Tous (pas de sous-section)</SelectItem>
+    {getSousSectionsForCategorie(newProduct.categorie).map((ss: any) => (
+      <SelectItem key={ss.id} value={ss.nom}>
+        {ss.nom}
+      </SelectItem>
+    ))}
+  </SelectContent>
+</Select>
+Ajouter aide visuelle :
+<p className="text-xs text-muted-foreground mt-1">
+  {!newProduct.categorie 
+    ? "Sélectionnez d'abord une catégorie" 
+    : getSousSectionsForCategorie(newProduct.categorie).length === 0
+      ? "Aucune sous-section pour cette catégorie"
+      : "Choisissez une sous-section ou 'Tous'"
+  }
+</p>
+4. Route GET sous-sections (backend)
+File: server/routes.ts
+// GET /api/referentiel/sous-sections - Liste toutes les sous-sections
+app.get("/api/referentiel/sous-sections", async (req, res) => {
+  try {
+    const rows = await db
+      .select({
+        id: sousSections.id,
+        nom: sousSections.nom,
+        categorieId: sousSections.categorieId,
+        categorie: categories.nom,
+      })
+      .from(sousSections)
+      .leftJoin(categories, eq(sousSections.categorieId, categories.id))
+      .orderBy(categories.nom, sousSections.nom);
+    
+    res.json(rows);
+  } catch (error: any) {
+    console.error("Erreur récupération sous-sections:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+PARTIE 3 : COLONNE SOUS-SECTION DANS TABLEAU PRODUITS
+File: client/src/pages/produits.tsx
+1. Ajouter champ sousSection dans editForm
+const [editForm, setEditForm] = useState<{
+  produitId: number;
+  nom: string;
+  estStockable: boolean;
+  sousSection: string;  // ← AJOUTER
+  fournisseurId: number | null;
+  prixHt: number;
+  regimeFiscal: string;
+}>({
+  produitId: 0,
+  nom: "",
+  estStockable: false,
+  sousSection: "",  // ← AJOUTER
+  fournisseurId: null,
+  prixHt: 0,
+  regimeFiscal: "tva_18",
+});
+2. Mettre à jour fonction startEditing
+const startEditing = (produit: ProduitWithPrixDefaut) => {
+  setEditingRow(produit.id);
+  setEditForm({
+    produitId: produit.id,
+    nom: produit.nom,
+    estStockable: produit.estStockable,
+    sousSection: produit.sousSection || "",  // ← AJOUTER
+    fournisseurId: produit.fournisseurDefaut?.id || null,
+    prixHt: produit.fournisseurDefaut?.prixHt || 0,
+    regimeFiscal: produit.fournisseurDefaut?.regimeFiscal || "tva_18",
+  });
+};
+3. Mettre à jour fonction saveEditing
+Dans saveEditing(), détecter changement de sous-section :
+// Changement sous-section
+if (editForm.sousSection !== (originalProduct.sousSection || "")) {
+  changes.sousSection = editForm.sousSection;
+}
+4. Mettre à jour mutation updateProductPriceMutation
+Ajouter type sousSection :
+const updateProductPriceMutation = useMutation({
+  mutationFn: async (data: { 
+    produitId: number; 
+    produitNom?: string;
+    estStockable?: boolean;
+    sousSection?: string;  // ← AJOUTER
+    fournisseurId?: number; 
+    prixHt?: number; 
+    regimeFiscal?: string 
+  }) => {
+    // Changement nom, stockage ou sous-section
+    if (data.produitNom !== undefined || data.estStockable !== undefined || data.sousSection !== undefined) {
+      const updateData: any = {};
+      if (data.produitNom !== undefined) updateData.nom = data.produitNom;
+      if (data.estStockable !== undefined) updateData.estStockable = data.estStockable;
+      if (data.sousSection !== undefined) updateData.sousSection = data.sousSection;  // ← AJOUTER
+      
+      await apiRequest("PATCH", `/api/referentiel/produits/${data.produitId}`, updateData);
+    }
+    
+    // ... reste du code prix/fournisseur
+  },
+  // ... rest
+});
+5. Ajouter colonne Sous-section dans le tableau
+INSÉRER cette colonne APRÈS "Catégorie" et AVANT "Unité" :
+{
+  key: "sousSection",
+  header: "Sous-section",
+  render: (p: ProduitWithPrixDefaut) => {
+    const isEditing = editingRow === p.id;
+    
+    if (isEditing) {
+      const ssSections = getSousSectionsForCategorie(p.categorie);
+      
+      return (
+        <Select 
+          value={editForm.sousSection || "Tous"} 
+          onValueChange={(v) => setEditForm({ 
+            ...editForm, 
+            sousSection: v === "Tous" ? "" : v 
+          })}
+        >
+          <SelectTrigger 
+            className="h-8 text-sm w-[150px]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <SelectValue placeholder="Tous" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="Tous">Tous</SelectItem>
+            {ssSections.map((ss: any) => (
+              <SelectItem key={ss.id} value={ss.nom}>
+                {ss.nom}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      );
+    }
+    
+    return (
+      <span className="text-sm text-muted-foreground">
+        {p.sousSection || "Tous"}
+      </span>
+    );
+  },
+},
+6. Route PATCH produit (backend)
+Mettre à jour pour accepter champ sousSection :
+// PATCH /api/referentiel/produits/:id - Modifier produit
+app.patch("/api/referentiel/produits/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { nom, est_stockable, sous_section } = req.body;
+    
+    const updateData: any = { dateModification: new Date() };
+    
+    if (nom !== undefined) updateData.nom = nom;
+    if (est_stockable !== undefined) updateData.estStockable = est_stockable;
+    if (sous_section !== undefined) {
+      updateData.sousSection = sous_section === "" ? null : sous_section;
+    }
+    
+    const [updated] = await db
+      .update(produitsMaster)
+      .set(updateData)
+      .where(eq(produitsMaster.id, parseInt(id)))
+      .returning();
+    
+    if (!updated) {
+      return res.status(404).json({ error: "Produit non trouvé" });
+    }
+    
+    res.json(updated);
+  } catch (error: any) {
+    console.error("Erreur modification produit:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+ORDRE FINAL DES COLONNES TABLEAU
+Produit (éditable)
+Stockage (éditable)
+Catégorie (lecture seule)
+Sous-section (éditable) ← NOUVELLE
+Unité (lecture seule)
+Fournisseur défaut (éditable)
+Prix HT (éditable)
+Régime fiscal (éditable)
+Dernière MAJ (lecture seule)
+Créé par (lecture seule)
+Actions (boutons)
+TESTS À EFFECTUER
+Création catégorie
+ Page Catégories → Bouton "Ajouter une catégorie" visible
+ Clic bouton → Dialog s'ouvre
+ Remplir "Nom catégorie" uniquement → Créer → Catégorie créée sans sous-section
+ Remplir "Nom catégorie" + "Tubes PVC" → Créer → Catégorie ET sous-section créées
+ Laisser nom vide → Bouton Créer désactivé
+ Catégorie existante → Erreur "Catégorie déjà existante"
+Sous-sections dans formulaire produit
+ Dialog nouveau produit → Sous-section est un Select (pas Input)
+ Sélectionner catégorie → Sous-sections de cette catégorie apparaissent
+ Option "Tous" disponible et fonctionnelle
+ Créer produit avec sous-section → Enregistré correctement
+Colonne Sous-section tableau
+ Colonne "Sous-section" visible entre Catégorie et Unité
+ Affiche "Tous" si produit sans sous-section
+ Affiche nom sous-section si définie
+ Double-clic → Select apparaît avec options de la catégorie
+ Changer sous-section → Valider → Enregistré
+ Refresh page → Sous-section modifiée persiste
+Backend
+ GET /api/referentiel/sous-sections retourne toutes avec catégorie
+ POST /api/referentiel/categories crée catégorie
+ POST /api/referentiel/sous-sections crée sous-section
+ PATCH /api/referentiel/produits accepte sous_section
+POINTS D'ATTENTION
+⚠️ Les sous-sections sont liées à une catégorie via categorieId
+⚠️ Quand on change la catégorie d'un produit, réinitialiser la sous-section à "Tous"
+⚠️ Gérer le cas où une catégorie n'a aucune sous-section (afficher "Tous" uniquement)
+⚠️ Le champ sousSection en base peut être NULL (= "Tous")
+⚠️ Importer les composants Dialog, Label si manquants
+
+---
+
+## ✅ RÉCAPITULATIF DES CHANGEMENTS
+
+### 1. **Page Catégories**
+- Bouton "Ajouter une catégorie" en haut à droite
+- Dialog avec 2 champs : Nom + Sous-section (optionnel)
+- Création simultanée catégorie + première sous-section
+
+### 2. **Formulaire création produit**
+- Sous-section devient un **Select** (au lieu de texte libre)
+- Options filtrées par catégorie sélectionnée
+- Option "Tous" pour produits sans sous-section
+
+### 3. **Tableau produits**
+- **Nouvelle colonne "Sous-section"** entre Catégorie et Unité
+- Éditable inline via Select
+- Affiche "Tous" si vide
+
+### 4. **Backend**
+- Routes POST catégories et sous-sections
+- Route GET sous-sections avec JOIN catégorie
+- PATCH produit accepte modification sous-section
