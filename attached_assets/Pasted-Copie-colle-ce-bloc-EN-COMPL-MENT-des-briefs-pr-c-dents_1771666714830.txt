@@ -1,0 +1,200 @@
+Copie-colle ce bloc EN COMPLÉMENT des briefs précédents :
+# AJOUT : ÉDITION AU SIMPLE CLIC SUR LA LIGNE
+
+## OBJECTIF
+Simplifier l'édition : un clic sur n'importe quelle cellule de la ligne active le mode édition (sans cliquer sur icône crayon)
+
+## CONTEXTE
+Actuellement : il faut cliquer sur l'icône crayon pour éditer
+Nouveau comportement : clic direct sur n'importe quelle cellule → ligne éditable
+
+## MODIFICATIONS DANS client/src/pages/produits.tsx
+
+### 1. Ajouter handler de clic sur ligne
+
+Avant la définition de `columns`, ajouter cette fonction :
+
+```typescript
+const handleRowClick = (produit: ProduitWithPrixDefaut, e: React.MouseEvent) => {
+  // Ignorer si clic sur bouton d'action (désactiver/réactiver/voir)
+  const target = e.target as HTMLElement;
+  if (target.closest('button') || target.closest('[role="button"]')) {
+    return;
+  }
+  
+  // Ignorer si déjà en mode édition
+  if (editingRow === produit.id) {
+    return;
+  }
+  
+  // Activer mode édition
+  startEditing(produit);
+};
+2. Modifier le rendu du tableau
+Localiser le code qui affiche les lignes du tableau (dans le <tbody> ou équivalent).
+REMPLACER :
+{sortedProduits.map((produit) => (
+  <tr key={produit.id}>
+    {columns.map((col) => (
+      <td className={col.className}>
+        {col.render(produit)}
+      </td>
+    ))}
+  </tr>
+))}
+PAR :
+{sortedProduits.map((produit) => (
+  <tr 
+    key={produit.id}
+    onClick={(e) => handleRowClick(produit, e)}
+    className={`cursor-pointer hover:bg-gray-50 transition-colors ${
+      editingRow === produit.id ? 'bg-blue-50' : ''
+    }`}
+  >
+    {columns.map((col) => (
+      <td className={col.className}>
+        {col.render(produit)}
+      </td>
+    ))}
+  </tr>
+))}
+3. Retirer l'icône crayon (Edit) de la colonne Actions
+Dans la définition de la colonne "actions" (dernière colonne), SUPPRIMER le bouton Edit/Eye :
+RETIRER CE BLOC :
+<Button 
+  variant="ghost" 
+  size="icon" 
+  onClick={() => startEditing(p)} 
+  data-testid={`button-edit-${p.id}`}
+>
+  <Eye className="h-4 w-4" />
+</Button>
+Garder uniquement les boutons de validation (quand en mode édition) et désactivation/réactivation.
+4. Retirer les double-clics (devenus inutiles)
+Dans TOUTES les colonnes éditables, RETIRER les onDoubleClick={() => startEditing(p)} qui sont maintenant inutiles.
+Par exemple, dans la colonne "nom" :
+RETIRER :
+onDoubleClick={() => startEditing(p)}
+Idem pour les colonnes :
+Stockage
+Fournisseur défaut
+Prix HT
+Régime fiscal
+5. Améliorer le feedback visuel
+Ajouter style CSS pour indiquer qu'une ligne est cliquable :
+Dans le fichier ou en inline, ajouter :
+// Optionnel : ajouter tooltip sur ligne
+<tr 
+  key={produit.id}
+  onClick={(e) => handleRowClick(produit, e)}
+  className={`cursor-pointer hover:bg-gray-50 transition-colors ${
+    editingRow === produit.id ? 'bg-blue-50 ring-2 ring-blue-300' : ''
+  }`}
+  title="Cliquer pour modifier"  // ← AJOUTER
+>
+6. Gérer le clic sur Select/Input (ne pas fermer l'édition)
+S'assurer que les clics sur les inputs/selects en mode édition ne déclenchent pas handleRowClick.
+Ajouter e.stopPropagation() sur les inputs/selects si nécessaire :
+<Input
+  value={editForm.nom}
+  onChange={(e) => setEditForm({ ...editForm, nom: e.target.value })}
+  onClick={(e) => e.stopPropagation()}  // ← AJOUTER
+  className="h-8 text-sm"
+  autoFocus
+/>
+
+<Select 
+  value={editForm.fournisseurId?.toString() || ""} 
+  onValueChange={(v) => setEditForm({ ...editForm, fournisseurId: parseInt(v) })}
+>
+  <SelectTrigger 
+    className="h-8 text-sm"
+    onClick={(e) => e.stopPropagation()}  // ← AJOUTER
+  >
+    <SelectValue placeholder="Choisir..." />
+  </SelectTrigger>
+  ...
+</Select>
+Idem pour tous les inputs et selects (Prix HT, Régime fiscal, Stockage).
+COMPORTEMENT FINAL
+Avant modification :
+Voir ligne produit
+Cliquer sur icône crayon
+Ligne devient éditable
+Modifier champs
+Valider ou Annuler
+Après modification :
+Voir ligne produit
+Cliquer n'importe où sur la ligne ← NOUVEAU
+Ligne devient éditable immédiatement
+Modifier champs
+Valider ou Annuler
+Exceptions (ne déclenchent PAS l'édition) :
+Clic sur bouton Désactiver/Réactiver
+Clic sur bouton Valider/Annuler (en mode édition)
+Clic dans un input/select déjà en mode édition
+FEEDBACK VISUEL
+État normal :
+[Ligne produit] ← cursor-pointer, hover:bg-gray-50
+État hover :
+[Ligne produit avec fond gris clair] ← Indique cliquable
+État édition active :
+[Ligne produit avec fond bleu clair + bordure bleue] ← Clairement identifiable
+TESTS À EFFECTUER
+ Clic sur colonne "Produit" → ligne éditable
+ Clic sur colonne "Catégorie" → ligne éditable
+ Clic sur colonne "Prix HT" → ligne éditable
+ Clic sur bouton Désactiver → ne déclenche PAS l'édition, désactive le produit
+ En mode édition : clic dans input → ne ferme PAS l'édition
+ En mode édition : clic dans select → dropdown s'ouvre normalement
+ Ligne en édition a fond bleu clair distinct
+ Hover sur ligne non éditée affiche fond gris clair
+ Bouton crayon (Eye/Pencil) n'existe plus dans colonne Actions
+ Validation/Annulation fonctionnent toujours
+AMÉLIORATION OPTIONNELLE : Focus automatique
+Pour améliorer l'UX, faire focus automatique sur le premier champ éditable quand on clique sur la ligne :
+Dans la fonction startEditing(), ajouter un setTimeout pour focus :
+const startEditing = (produit: ProduitWithPrixDefaut) => {
+  setEditingRow(produit.id);
+  setEditForm({
+    produitId: produit.id,
+    nom: produit.nom,
+    estStockable: produit.estStockable,
+    fournisseurId: produit.fournisseurDefaut?.id || null,
+    prixHt: produit.fournisseurDefaut?.prixHt || 0,
+    regimeFiscal: produit.fournisseurDefaut?.regimeFiscal || "tva_18",
+  });
+  
+  // Focus automatique sur premier input après render
+  setTimeout(() => {
+    const firstInput = document.querySelector(`tr[data-editing-id="${produit.id}"] input`);
+    if (firstInput instanceof HTMLInputElement) {
+      firstInput.focus();
+      firstInput.select();  // Sélectionne le texte pour remplacement rapide
+    }
+  }, 50);
+};
+Et ajouter data-editing-id sur la ligne en édition :
+<tr 
+  key={produit.id}
+  data-editing-id={editingRow === produit.id ? produit.id : undefined}
+  onClick={(e) => handleRowClick(produit, e)}
+  className={...}
+>
+POINTS D'ATTENTION
+⚠️ S'assurer que e.stopPropagation() est bien sur TOUS les inputs/selects
+⚠️ Tester sur mobile (touch) : le comportement doit rester fluide
+⚠️ Si tu as des liens dans le tableau, ajouter aussi e.stopPropagation() dessus
+⚠️ Le fond bleu en mode édition doit être suffisamment visible mais pas agressif
+
+---
+
+## ✅ RÉSULTAT ATTENDU
+
+**Avant :**
+- 2 étapes : Clic crayon → Édition
+
+**Après :**
+- 1 étape : Clic ligne → Édition directe 🚀
+
+**Gain UX :** Édition **2x plus rapide**, plus intuitive, moins de clics !
