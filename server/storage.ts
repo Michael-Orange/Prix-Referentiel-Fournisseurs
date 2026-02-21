@@ -615,7 +615,8 @@ export class DatabaseStorage implements IStorage {
     const [avecPrix] = await db
       .select({ c: sql<number>`COUNT(DISTINCT ${prixFournisseurs.produitMasterId})` })
       .from(prixFournisseurs)
-      .where(eq(prixFournisseurs.actif, true));
+      .innerJoin(produitsMaster, eq(prixFournisseurs.produitMasterId, produitsMaster.id))
+      .where(and(eq(prixFournisseurs.actif, true), eq(produitsMaster.actif, true)));
 
     return {
       totalProduits: totalP.c,
