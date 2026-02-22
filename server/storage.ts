@@ -1,5 +1,5 @@
 import { db, pool } from "./db";
-import { eq, desc, and, sql, asc, count } from "drizzle-orm";
+import { eq, desc, and, sql, asc, count, isNull } from "drizzle-orm";
 import {
   fournisseurs,
   categories,
@@ -142,7 +142,7 @@ export class DatabaseStorage implements IStorage {
         count: sql<number>`count(*)::int`,
       })
       .from(produitsMaster)
-      .where(eq(produitsMaster.actif, true))
+      .where(and(eq(produitsMaster.actif, true), isNull(produitsMaster.templateParentId)))
       .groupBy(produitsMaster.categorie);
 
     const countMap = new Map(countRows.map(r => [r.categorie, r.count]));
@@ -178,7 +178,7 @@ export class DatabaseStorage implements IStorage {
       let query = `
         SELECT DISTINCT sous_section, categorie
         FROM referentiel.produits_master
-        WHERE sous_section IS NOT NULL AND sous_section != '' AND actif = true
+        WHERE sous_section IS NOT NULL AND sous_section != '' AND actif = true AND template_parent_id IS NULL
       `;
       const params: string[] = [];
       if (categorie) {
@@ -209,6 +209,7 @@ export class DatabaseStorage implements IStorage {
     } else {
       conditions.push(eq(produitsMaster.actif, true));
     }
+    conditions.push(isNull(produitsMaster.templateParentId));
     if (filters?.categorie) conditions.push(eq(produitsMaster.categorie, filters.categorie));
     if (filters?.stockable !== undefined) conditions.push(eq(produitsMaster.estStockable, filters.stockable));
 
@@ -227,6 +228,7 @@ export class DatabaseStorage implements IStorage {
         largeur: produitsMaster.largeur,
         couleur: produitsMaster.couleur,
         estTemplate: produitsMaster.estTemplate,
+        templateParentId: produitsMaster.templateParentId,
         dateCreation: produitsMaster.dateCreation,
         dateModification: produitsMaster.dateModification,
         creePar: produitsMaster.creePar,
@@ -268,6 +270,7 @@ export class DatabaseStorage implements IStorage {
       largeur: row.largeur,
       couleur: row.couleur,
       estTemplate: row.estTemplate,
+      templateParentId: row.templateParentId,
       dateCreation: row.dateCreation,
       dateModification: row.dateModification,
       creePar: row.creePar,
@@ -372,6 +375,7 @@ export class DatabaseStorage implements IStorage {
         SELECT id, nom, categorie, similarity(nom_normalise, $1) AS score
         FROM referentiel.produits_master
         WHERE actif = true
+          AND template_parent_id IS NULL
           AND similarity(nom_normalise, $1) > 0.3
       `;
       const params: string[] = [nomNorm];
@@ -608,7 +612,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getDashboardStats() {
-    const [totalP] = await db.select({ c: count() }).from(produitsMaster).where(eq(produitsMaster.actif, true));
+    const [totalP] = await db.select({ c: count() }).from(produitsMaster).where(and(eq(produitsMaster.actif, true), isNull(produitsMaster.templateParentId)));
     const [totalF] = await db.select({ c: count() }).from(fournisseurs).where(eq(fournisseurs.actif, true));
     const [totalC] = await db.select({ c: count() }).from(categories);
 
@@ -616,7 +620,7 @@ export class DatabaseStorage implements IStorage {
       .select({ c: sql<number>`COUNT(DISTINCT ${prixFournisseurs.produitMasterId})` })
       .from(prixFournisseurs)
       .innerJoin(produitsMaster, eq(prixFournisseurs.produitMasterId, produitsMaster.id))
-      .where(and(eq(prixFournisseurs.actif, true), eq(produitsMaster.actif, true)));
+      .where(and(eq(prixFournisseurs.actif, true), eq(produitsMaster.actif, true), isNull(produitsMaster.templateParentId)));
 
     return {
       totalProduits: totalP.c,

@@ -48,6 +48,7 @@ export const produitsMaster = referentielSchema.table("produits_master", {
   largeur: real("largeur"),
   couleur: text("couleur"),
   estTemplate: boolean("est_template").notNull().default(false),
+  templateParentId: integer("template_parent_id"),
   dateCreation: timestamp("date_creation").notNull().defaultNow(),
   dateModification: timestamp("date_modification").notNull().defaultNow(),
   creePar: text("cree_par"),
