@@ -1,0 +1,74 @@
+# BRIEF : Vérification avant suppression table stock.users
+
+## CONTEXTE
+
+L'authentification a été migrée vers `referentiel.users`. L'ancienne table `stock.users` est probablement obsolète, mais on doit vérifier avant de la supprimer.
+
+## VÉRIFICATIONS À FAIRE
+
+### 1. Rechercher références dans le code
+
+```bash
+grep -r "stock.users" server/ shared/
+grep -r "FROM users" server/ | grep -v "referentiel"
+grep -r "\.users" server/ | grep -v "referentiel"
+Donne-moi la liste complète des fichiers qui référencent stock.users.
+2. Chercher foreign keys
+SELECT
+  tc.table_name, 
+  kcu.column_name,
+  ccu.table_name AS foreign_table_name
+FROM information_schema.table_constraints AS tc 
+JOIN information_schema.key_column_usage AS kcu
+  ON tc.constraint_name = kcu.constraint_name
+JOIN information_schema.constraint_column_usage AS ccu
+  ON ccu.constraint_name = tc.constraint_name
+WHERE tc.constraint_type = 'FOREIGN KEY' 
+  AND ccu.table_schema = 'stock'
+  AND ccu.table_name = 'users';
+Dis-moi si des tables ont des foreign keys vers stock.users.
+3. Comparer utilisateurs
+-- Ancienne table
+SELECT id, nom, email FROM stock.users ORDER BY id;
+
+-- Nouvelle table
+SELECT id, username, nom, email FROM referentiel.users ORDER BY id;
+Affiche-moi les 2 listes pour qu'on compare.
+ATTENDRE RÉSULTATS
+Ne supprime rien pour l'instant. Donne-moi les résultats des 3 vérifications d'abord.
+
+---
+
+## 🎯 MA RECOMMANDATION FINALE
+
+### **À FAIRE MAINTENANT :**
+
+1. ✅ **Envoyer le brief ci-dessus à Replit Stock** pour vérifications
+2. ✅ **Si utilisateur "Papa" doit rester** : Le créer dans `referentiel.users` via interface admin
+3. ⏳ **Attendre résultats vérifications** (code, FK, données)
+
+### **APRÈS VÉRIFICATIONS :**
+
+**Si tout OK** (pas de code qui utilise, pas de FK, utilisateurs migrés) :
+4. ✅ Backup : `CREATE TABLE stock.users_backup AS SELECT * FROM stock.users`
+5. ✅ Supprimer : `DROP TABLE stock.users`
+6. ✅ Tester l'app complète
+
+**Si problèmes trouvés** :
+4. ❌ Refactoriser le code d'abord
+5. ❌ Migrer les FK
+6. ❌ Puis supprimer
+
+---
+
+## ⚠️ PRUDENCE
+
+**Ne PAS supprimer directement** sans vérifications. Une table users peut avoir des liens avec :
+- Mouvements de stock (creePar, modifiePar)
+- Logs d'activité
+- Permissions
+- Historique
+
+**Si on supprime sans vérifier → risque de casser l'app ou perdre la traçabilité.**
+
+**Tu veux que j'envoie le brief de vérification à Replit Stock ?** 🔍
