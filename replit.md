@@ -39,7 +39,7 @@ Preferred communication style: Simple, everyday language.
 3. **produits_master**: Master product catalog (nom, nomNormalise, categorie, sous_section (TEXT, dynamic), unite, estStockable, sourceApp)
 
 #### Schema `prix` (supplier pricing)
-4. **fournisseurs**: Suppliers with fiscal regime (statutTva: tva_18, sans_tva, brs_5)
+4. **fournisseurs**: Suppliers with fiscal regime (statutTva: tva_18, sans_tva, brs_5), 2 optional contacts (contact1/telephone1/email1, contact2/telephone2/email2), ville (adresse), localisationGoogleMaps
 5. **prix_fournisseurs**: Supplier prices with auto-calculated HT/TTC/BRS, default supplier flag
 6. **historique_prix**: Price change history (populated by PostgreSQL trigger)
 7. **api_keys**: API authentication keys with scope-based access control

@@ -28,7 +28,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { formatDate } from "@/lib/utils";
-import { Plus, Pencil, Ban, RotateCcw, Users } from "lucide-react";
+import { Plus, Pencil, Ban, RotateCcw, Users, ExternalLink } from "lucide-react";
 import type { FournisseurWithStats } from "@shared/schema";
 
 export default function Fournisseurs() {
@@ -42,10 +42,14 @@ export default function Fournisseurs() {
 
   const [formData, setFormData] = useState({
     nom: "",
-    contact: "",
-    telephone: "",
-    email: "",
+    contact1: "",
+    telephone1: "",
+    email1: "",
+    contact2: "",
+    telephone2: "",
+    email2: "",
     adresse: "",
+    localisationGoogleMaps: "",
     statutTva: "tva_18",
   });
 
@@ -108,7 +112,7 @@ export default function Fournisseurs() {
 
   const openCreateDialog = () => {
     setEditingFournisseur(null);
-    setFormData({ nom: "", contact: "", telephone: "", email: "", adresse: "", statutTva: "tva_18" });
+    setFormData({ nom: "", contact1: "", telephone1: "", email1: "", contact2: "", telephone2: "", email2: "", adresse: "", localisationGoogleMaps: "", statutTva: "tva_18" });
     setIsDialogOpen(true);
   };
 
@@ -116,10 +120,14 @@ export default function Fournisseurs() {
     setEditingFournisseur(f);
     setFormData({
       nom: f.nom,
-      contact: f.contact || "",
-      telephone: f.telephone || "",
-      email: f.email || "",
+      contact1: f.contact1 || "",
+      telephone1: f.telephone1 || "",
+      email1: f.email1 || "",
+      contact2: f.contact2 || "",
+      telephone2: f.telephone2 || "",
+      email2: f.email2 || "",
       adresse: f.adresse || "",
+      localisationGoogleMaps: f.localisationGoogleMaps || "",
       statutTva: f.statutTva,
     });
     setIsDialogOpen(true);
@@ -173,7 +181,12 @@ export default function Fournisseurs() {
       key: "contact",
       header: "Contact",
       render: (f: FournisseurWithStats) => (
-        <span className="text-sm text-muted-foreground">{f.telephone || f.email || "-"}</span>
+        <div className="text-sm text-muted-foreground">
+          {f.contact1 && <div>{f.contact1}{f.telephone1 ? ` · ${f.telephone1}` : ""}</div>}
+          {!f.contact1 && f.telephone1 && <div>{f.telephone1}</div>}
+          {!f.contact1 && !f.telephone1 && f.email1 && <div>{f.email1}</div>}
+          {!f.contact1 && !f.telephone1 && !f.email1 && "-"}
+        </div>
       ),
     },
     {
@@ -249,7 +262,7 @@ export default function Fournisseurs() {
       />
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>{editingFournisseur ? "Modifier le fournisseur" : "Nouveau fournisseur"}</DialogTitle>
             <DialogDescription>
@@ -276,25 +289,59 @@ export default function Fournisseurs() {
               </Select>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="contact">Contact</Label>
-                <Input id="contact" value={formData.contact} onChange={(e) => setFormData({ ...formData, contact: e.target.value })} placeholder="Nom contact" data-testid="input-contact" />
+            <div className="border rounded-lg p-3 space-y-3">
+              <p className="text-sm font-medium text-muted-foreground">Contact 1</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label htmlFor="contact1">Contact</Label>
+                  <Input id="contact1" value={formData.contact1} onChange={(e) => setFormData({ ...formData, contact1: e.target.value })} placeholder="Nom contact" data-testid="input-contact1" />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="telephone1">Téléphone</Label>
+                  <Input id="telephone1" value={formData.telephone1} onChange={(e) => setFormData({ ...formData, telephone1: e.target.value })} placeholder="+221 ..." data-testid="input-telephone1" />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="telephone">Téléphone</Label>
-                <Input id="telephone" value={formData.telephone} onChange={(e) => setFormData({ ...formData, telephone: e.target.value })} placeholder="+221 ..." data-testid="input-telephone" />
+              <div className="space-y-1">
+                <Label htmlFor="email1">Email</Label>
+                <Input id="email1" type="email" value={formData.email1} onChange={(e) => setFormData({ ...formData, email1: e.target.value })} placeholder="email@exemple.com" data-testid="input-email1" />
+              </div>
+            </div>
+
+            <div className="border rounded-lg p-3 space-y-3">
+              <p className="text-sm font-medium text-muted-foreground">Contact 2</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label htmlFor="contact2">Contact</Label>
+                  <Input id="contact2" value={formData.contact2} onChange={(e) => setFormData({ ...formData, contact2: e.target.value })} placeholder="Nom contact" data-testid="input-contact2" />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="telephone2">Téléphone</Label>
+                  <Input id="telephone2" value={formData.telephone2} onChange={(e) => setFormData({ ...formData, telephone2: e.target.value })} placeholder="+221 ..." data-testid="input-telephone2" />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="email2">Email</Label>
+                <Input id="email2" type="email" value={formData.email2} onChange={(e) => setFormData({ ...formData, email2: e.target.value })} placeholder="email@exemple.com" data-testid="input-email2" />
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder="email@exemple.com" data-testid="input-email" />
+              <Label htmlFor="adresse">Ville</Label>
+              <Input id="adresse" value={formData.adresse} onChange={(e) => setFormData({ ...formData, adresse: e.target.value })} placeholder="Ville" data-testid="input-adresse" />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="adresse">Adresse</Label>
-              <Input id="adresse" value={formData.adresse} onChange={(e) => setFormData({ ...formData, adresse: e.target.value })} placeholder="Adresse" data-testid="input-adresse" />
+              <Label htmlFor="localisationGoogleMaps">Localisation Google Maps</Label>
+              <div className="flex gap-2">
+                <Input id="localisationGoogleMaps" value={formData.localisationGoogleMaps} onChange={(e) => setFormData({ ...formData, localisationGoogleMaps: e.target.value })} placeholder="https://maps.google.com/..." className="flex-1" data-testid="input-localisation" />
+                {formData.localisationGoogleMaps && (
+                  <Button type="button" variant="outline" size="icon" asChild data-testid="link-google-maps">
+                    <a href={formData.localisationGoogleMaps} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="h-4 w-4" />
+                    </a>
+                  </Button>
+                )}
+              </div>
             </div>
 
             <DialogFooter>
