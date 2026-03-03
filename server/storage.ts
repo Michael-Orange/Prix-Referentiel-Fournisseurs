@@ -215,6 +215,7 @@ export class DatabaseStorage implements IStorage {
     }
     conditions.push(isNull(produitsMaster.templateParentId));
     conditions.push(sql`${produitsMaster.nom} NOT ILIKE '%(chute)%'`);
+    conditions.push(sql`${produitsMaster.nom} NOT ILIKE '%(rouleau Partiellement Utilisé)%'`);
     if (filters?.categorie) conditions.push(eq(produitsMaster.categorie, filters.categorie));
     if (filters?.stockable !== undefined) conditions.push(eq(produitsMaster.estStockable, filters.stockable));
 
