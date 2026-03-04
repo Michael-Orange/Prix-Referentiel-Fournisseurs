@@ -73,6 +73,12 @@ interface DuplicateResult {
   score: number;
 }
 
+function getDisplayUnite(p: { unite: string; nom: string; sousSection?: string | null }): string {
+  if (p.unite === "Nb de tuyaux 6m") return "ml";
+  if (p.nom.toLowerCase().includes("rouleau") && p.sousSection === "Geotextile") return "ml";
+  return p.unite;
+}
+
 export default function Produits() {
   const { toast } = useToast();
   const searchString = useSearch();
@@ -674,7 +680,7 @@ export default function Produits() {
           <SortIcon columnKey="unite" />
         </div>
       ),
-      render: (p: ProduitWithPrixDefaut) => <Badge variant="outline">{p.unite === "Nb de tuyaux 6m" ? "ml" : p.unite}</Badge>,
+      render: (p: ProduitWithPrixDefaut) => <Badge variant="outline">{getDisplayUnite(p)}</Badge>,
     },
     {
       key: "fournisseur",
@@ -1291,7 +1297,7 @@ export default function Produits() {
 
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div><span className="text-muted-foreground">Catégorie:</span><p className="font-medium">{selectedProduct.categorie}</p></div>
-                <div><span className="text-muted-foreground">Unité:</span><p className="font-medium">{selectedProduct.unite === "Nb de tuyaux 6m" ? "ml" : selectedProduct.unite}</p></div>
+                <div><span className="text-muted-foreground">Unité:</span><p className="font-medium">{getDisplayUnite(selectedProduct)}</p></div>
                 {selectedProduct.sousSection && <div><span className="text-muted-foreground">Sous-section:</span><p className="font-medium">{selectedProduct.sousSection}</p></div>}
                 <div><span className="text-muted-foreground">Source:</span><p className="font-medium">{selectedProduct.sourceApp}</p></div>
               </div>
