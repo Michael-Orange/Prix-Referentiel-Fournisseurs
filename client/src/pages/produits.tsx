@@ -75,7 +75,7 @@ interface DuplicateResult {
 
 function getDisplayUnite(p: { unite: string; nom: string; sousSection?: string | null }): string {
   if (p.unite === "Nb de tuyaux 6m") return "ml";
-  if (p.nom.toLowerCase().includes("rouleau") && p.sousSection === "Geotextile") return "ml";
+  if (p.nom.toLowerCase().includes("rouleau") && p.sousSection === "Geotextile") return "m²";
   return p.unite;
 }
 
