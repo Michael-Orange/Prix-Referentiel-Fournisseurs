@@ -1,0 +1,40 @@
+ INTÉGRATION SSO - Portail Auth FiltrePlante dans l'app Prix Référentiel (Produits)
+
+Contexte
+On a mis en place un portail d'authentification centralisée (SSO) pour toutes les apps FiltrePlante, déployé sur https://auth.filtreplante.com. Ce portail gère le login unique : l'utilisateur sélectionne son nom dans une liste déroulante, entre son mot de passe, puis peut accéder à toutes les apps autorisées sans se reconnecter.
+
+Le portail Auth utilise la même base Neon (referentiel.users), le même JWT_SECRET et le même CRYPTO_SECRET que l'app Produits. Quand un utilisateur clique "Accéder" à Prix Référentiel depuis le portail, un token JWT SSO (valable 5 min) est généré et l'utilisateur est redirigé vers https://produit.filtreplante.com/sso/login?token=XXX.
+
+Ce qu'il faut modifier dans l'app Produits
+1. Ajouter un endpoint GET /sso/login
+Créer une route GET /sso/login qui :
+
+Récupère le paramètre token depuis l'URL (req.query.token)
+Vérifie ce token JWT avec process.env.JWT_SECRET (le même que celui déjà utilisé dans l'app)
+Vérifie que le champ type du payload est bien "sso" (sécurité : ne pas accepter un token de session comme token SSO)
+Si le token est valide : crée la session locale de l'app Produits (cookie auth_token comme le fait déjà le login actuel) puis redirige vers / (page d'accueil)
+Si le token est invalide ou expiré : redirige vers https://auth.filtreplante.com/login?redirect=prix
+Le payload du token SSO contient :
+
+{
+  "userId": 3,
+  "username": "michael",
+  "nom": "Michael",
+  "role": "admin",
+  "apps": ["stock", "prix"],
+  "type": "sso",
+  "targetApp": "prix"
+}
+2. Modifier la redirection quand pas de session
+Partout où l'app Produits détecte qu'il n'y a pas de session utilisateur valide (pas de cookie auth_token ou token expiré), remplacer la redirection vers le login local par une redirection vers le portail Auth :
+
+https://auth.filtreplante.com/login?redirect=prix
+Le paramètre ?redirect=prix permet au portail Auth de renvoyer automatiquement l'utilisateur vers l'app Produits après son authentification.
+
+3. Conserver le login local en fallback (optionnel)
+Tu peux garder la page de login locale comme fallback au cas où le portail Auth serait indisponible. Mais le flux principal doit passer par le portail Auth.
+
+Résumé des changements
+Ajouter : route GET /sso/login?token=XXX → vérifier JWT (type === "sso") → créer session locale → redirect /
+Modifier : redirection en cas d'absence de session → pointer vers https://auth.filtreplante.com/login?redirect=prix au lieu du login local
+Ne pas toucher : le JWT_SECRET, le CRYPTO_SECRET, la base de données, la logique métier existante
