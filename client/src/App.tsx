@@ -85,13 +85,7 @@ function App() {
   };
 
   const handleLogout = () => {
-    fetch("/api/auth/logout", { method: "POST", credentials: "include" })
-      .catch(() => {})
-      .finally(() => {
-        setUser(null);
-        queryClient.clear();
-        window.location.href = `${AUTH_PORTAL_URL}/login?redirect=prix`;
-      });
+    window.location.href = `${AUTH_PORTAL_URL}/api/auth/logout`;
   };
 
   if (user === undefined) {
