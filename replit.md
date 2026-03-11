@@ -118,7 +118,6 @@ BRS 5%:   prixTtc = null, prixBrs = prixHt / 0.95
 ### Key NPM Packages
 - **drizzle-orm** + **drizzle-kit**: Database ORM with pgSchema support
 - **@tanstack/react-query**: Server state management
-- **express-session**: Session management
 - **csv-parse**: CSV import for bulk product loading (338 products)
 - **zod** + **drizzle-zod**: Runtime schema validation
 
