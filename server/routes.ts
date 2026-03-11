@@ -5,9 +5,13 @@ import { storage } from "./storage";
 import { resetAndReseed } from "./seed";
 import { insertFournisseurSchema, insertProduitMasterSchema, REGIMES_FISCAUX } from "@shared/schema";
 import { z } from "zod";
-import { requireAuth, requireAdmin, requireApp, verifyToken } from "./middleware/auth";
+import jwt from "jsonwebtoken";
+import { requireAuth, requireAdmin, requireApp, verifyToken, generateToken } from "./middleware/auth";
 import authRoutes from "./routes/auth";
 import usersRoutes from "./routes/users";
+import { db } from "./db";
+import { users } from "@shared/schema";
+import { eq } from "drizzle-orm";
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
   if (process.env.NODE_ENV === "production") {
@@ -18,6 +22,72 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.use("/api/auth", authRoutes);
   app.use("/api/admin/users", usersRoutes);
+
+  const AUTH_PORTAL_URL = "https://auth.filtreplante.com";
+  const JWT_SECRET = process.env.JWT_SECRET || "fallback-jwt";
+
+  app.get("/sso/login", async (req, res) => {
+    const ssoToken = req.query.token as string;
+
+    if (!ssoToken) {
+      return res.redirect(`${AUTH_PORTAL_URL}/login?redirect=prix`);
+    }
+
+    try {
+      const payload = jwt.verify(ssoToken, JWT_SECRET) as any;
+
+      if (payload.type !== "sso") {
+        return res.redirect(`${AUTH_PORTAL_URL}/login?redirect=prix`);
+      }
+
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, payload.userId))
+        .limit(1);
+
+      if (!user || !user.actif) {
+        return res.redirect(`${AUTH_PORTAL_URL}/login?redirect=prix`);
+      }
+
+      if (!user.peutAccesPrix && user.role !== "admin") {
+        console.warn(`SSO login refusé: utilisateur ${user.username} n'a pas accès à Prix`);
+        return res.redirect(`${AUTH_PORTAL_URL}/login?redirect=prix`);
+      }
+
+      const apps: string[] = [];
+      if (user.peutAccesPrix) {
+        apps.push("prix", "stock");
+      } else if (user.peutAccesStock) {
+        apps.push("stock");
+      }
+
+      await db
+        .update(users)
+        .set({ derniereConnexion: new Date() })
+        .where(eq(users.id, user.id));
+
+      const localToken = generateToken({
+        userId: user.id,
+        username: user.username,
+        nom: user.nom,
+        role: user.role as "admin" | "user",
+        apps,
+      });
+
+      res.cookie("auth_token", localToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      });
+
+      res.redirect("/");
+    } catch (error: any) {
+      console.error("Erreur SSO login:", error.message);
+      return res.redirect(`${AUTH_PORTAL_URL}/login?redirect=prix`);
+    }
+  });
 
   app.post("/api/admin/reseed", requireAuth, requireAdmin, async (_req, res) => {
     try {

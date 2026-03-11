@@ -95,6 +95,7 @@ Preferred communication style: Simple, everyday language.
 - `PATCH /api/admin/users/:id` - Update user (requireAdmin)
 - `GET /api/admin/users/:id/password` - Reveal decrypted password (requireAdmin)
 - `GET /api/auth/sso-token` - Generate 30s SSO token for Stock app redirect (requireAuth + stock access check)
+- `GET /sso/login?token=XXX` - SSO login from Auth portal: verify JWT (type=sso), create local session, redirect to /
 
 ### Price Calculation Logic (shared/schema.ts)
 ```
@@ -121,7 +122,16 @@ BRS 5%:   prixTtc = null, prixBrs = prixHt / 0.95
 - **csv-parse**: CSV import for bulk product loading (338 products)
 - **zod** + **drizzle-zod**: Runtime schema validation
 
-## Recent Changes (2026-02-21)
+## Recent Changes (2026-03-11)
+- **SSO from Auth portal**: GET /sso/login?token=XXX endpoint accepts SSO JWT tokens (type=sso) from https://auth.filtreplante.com, creates local session, redirects to /
+- **Auth portal redirect**: Unauthenticated users are redirected to https://auth.filtreplante.com/login?redirect=prix instead of local login. Local login still accessible via ?local=1 query param as fallback.
+- **Logout redirect**: Logout now redirects to the Auth portal
+- **2 contacts per supplier**: fournisseurs table extended with contact1/telephone1/email1 + contact2/telephone2/email2 (all optional)
+- **Supplier location fields**: Renamed "Adresse" label to "Ville" in UI; added localisationGoogleMaps field with clickable link
+- **Hidden products in Prix**: Products containing "(chute)" or "(rouleau Partiellement Utilisé)" in name are excluded from product queries (still in DB for Stock app)
+- **Unit display mapping**: Products with unite "Nb de tuyaux 6m" display as "ml"; Geotextile rouleau products display as "m²" (DB values unchanged for Stock app)
+
+## Previous Changes (2026-02-21)
 - **JWT Authentication overhaul**: Replaced express-session/email auth with JWT tokens in HttpOnly cookies + username dropdown login
   - New `referentiel.users` table with username, password_encrypted (AES), per-app permissions
   - Middleware: requireAuth (JWT), requireAdmin, requireApp("prix"|"stock")

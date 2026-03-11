@@ -59,10 +59,18 @@ function AuthenticatedApp({ user, onLogout }: { user: AuthUser; onLogout: () => 
   );
 }
 
+const AUTH_PORTAL_URL = "https://auth.filtreplante.com";
+
 function App() {
   const [user, setUser] = useState<AuthUser | null | undefined>(undefined);
+  const [useLocalLogin, setUseLocalLogin] = useState(false);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("local") === "1") {
+      setUseLocalLogin(true);
+    }
+
     fetch("/api/auth/me", { credentials: "include" })
       .then((res) => {
         if (res.ok) return res.json();
@@ -78,9 +86,11 @@ function App() {
 
   const handleLogout = () => {
     fetch("/api/auth/logout", { method: "POST", credentials: "include" })
-      .then(() => {
+      .catch(() => {})
+      .finally(() => {
         setUser(null);
         queryClient.clear();
+        window.location.href = `${AUTH_PORTAL_URL}/login?redirect=prix`;
       });
   };
 
@@ -88,6 +98,15 @@ function App() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="animate-pulse text-muted-foreground">Chargement...</div>
+      </div>
+    );
+  }
+
+  if (!user && !useLocalLogin) {
+    window.location.href = `${AUTH_PORTAL_URL}/login?redirect=prix`;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="animate-pulse text-muted-foreground">Redirection vers le portail d'authentification...</div>
       </div>
     );
   }
