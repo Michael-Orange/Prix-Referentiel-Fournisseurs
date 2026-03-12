@@ -20,7 +20,6 @@ import {
   History,
   LogOut,
   User,
-  Shield,
   ExternalLink,
   Loader2,
   Warehouse
@@ -124,27 +123,6 @@ export function AppSidebar({ user, onLogout }: AppSidebarProps) {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
-        {user.role === "admin" && (
-          <SidebarGroup>
-            <SidebarGroupLabel>Administration</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton 
-                    asChild 
-                    isActive={location === "/utilisateurs"}
-                    data-testid="nav-utilisateurs"
-                  >
-                    <Link href="/utilisateurs">
-                      <Shield className="h-4 w-4" />
-                      <span>Utilisateurs</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
         {user.peutAccesStock && (
           <SidebarGroup>
             <SidebarGroupLabel>Applications</SidebarGroupLabel>

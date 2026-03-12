@@ -13,9 +13,8 @@ import Fournisseurs from "@/pages/fournisseurs";
 import Categories from "@/pages/categories";
 import Produits from "@/pages/produits";
 import Historique from "@/pages/historique";
-import UsersPage from "@/pages/users";
 
-function Router({ user }: { user: AuthUser }) {
+function Router() {
   return (
     <Switch>
       <Route path="/" component={Dashboard} />
@@ -23,11 +22,6 @@ function Router({ user }: { user: AuthUser }) {
       <Route path="/categories" component={Categories} />
       <Route path="/produits" component={Produits} />
       <Route path="/historique" component={Historique} />
-      {user.role === "admin" && (
-        <Route path="/utilisateurs">
-          <UsersPage />
-        </Route>
-      )}
       <Route component={NotFound} />
     </Switch>
   );
@@ -51,7 +45,7 @@ function AuthenticatedApp({ user, onLogout }: { user: AuthUser; onLogout: () => 
             </h1>
           </header>
           <main className="flex-1 overflow-auto bg-background">
-            <Router user={user} />
+            <Router />
           </main>
         </div>
       </div>

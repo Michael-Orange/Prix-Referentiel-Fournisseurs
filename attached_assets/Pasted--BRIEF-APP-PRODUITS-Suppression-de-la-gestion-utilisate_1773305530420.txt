@@ -1,0 +1,202 @@
+# BRIEF APP PRODUITS - Suppression de la gestion utilisateurs
+
+## 🎯 OBJECTIF
+
+Supprimer toute la partie gestion des utilisateurs de l'app "Référentiel Produits Fournisseurs" maintenant que cette fonctionnalité est centralisée dans le portail Auth. L'app Produits devient une app "consommatrice" uniquement : elle vérifie les sessions et permissions, mais ne modifie plus les utilisateurs.
+
+## 📊 CONTEXTE
+
+**État actuel** :
+- L'app a une page complète de gestion utilisateurs (`pages/users.tsx`)
+- Elle a des routes API CRUD pour les utilisateurs (`routes/users.ts`)
+- Elle a un middleware `requireAdmin` pour protéger ces routes
+- Elle a un lien "Gestion utilisateurs" dans la sidebar
+
+**État cible** :
+- Suppression de la page et des routes de gestion utilisateurs
+- Conservation de l'authentification (lecture seule)
+- Conservation des routes métier (produits, fournisseurs, prix, catégories)
+- Nettoyage du menu navigation
+
+## 🗑️ FICHIERS À SUPPRIMER COMPLÈTEMENT
+
+### Frontend
+- `client/src/pages/users.tsx` — Page de gestion des utilisateurs (tout supprimer)
+
+### Backend
+- `server/routes/users.ts` — Routes API CRUD utilisateurs (tout supprimer)
+
+## ✏️ FICHIERS À MODIFIER
+
+### 1. Navigation - Retirer le lien "Gestion utilisateurs"
+
+**Fichier** : `client/src/components/app-sidebar.tsx`
+
+**Action** : Supprimer l'item de menu "Gestion utilisateurs" (ou équivalent)
+
+**Avant** :
+```tsx
+{
+  title: "Gestion utilisateurs",
+  url: "/users",
+  icon: Users,
+  adminOnly: true, // ou condition similaire
+}
+```
+
+**Après** : Supprimer complètement cet item
+
+**Note** : Si le menu a une condition pour afficher des items admin uniquement, tu peux la garder pour d'autres fonctionnalités futures, ou la supprimer si elle ne sert plus à rien.
+
+### 2. Router - Retirer la route /users
+
+**Fichier** : `client/src/App.tsx` (ou fichier de routage)
+
+**Action** : Supprimer la route vers la page users
+
+**Avant** :
+```tsx
+<Route path="/users" element={<UsersPage />} />
+// ou équivalent
+```
+
+**Après** : Supprimer cette ligne
+
+### 3. Backend routes - Retirer l'import et l'usage de routes/users.ts
+
+**Fichier** : `server/routes.ts`
+
+**Action** : Supprimer l'import et l'enregistrement des routes utilisateurs
+
+**Avant** :
+```typescript
+import usersRoutes from './routes/users';
+// ...
+app.use('/api/users', usersRoutes);
+// ou équivalent
+```
+
+**Après** : Supprimer ces lignes
+
+### 4. Middleware auth - Nettoyer requireAdmin si plus utilisé
+
+**Fichier** : `server/middleware/auth.ts`
+
+**Action** : 
+- Garder `requireAuth` (nécessaire pour protéger les routes métier)
+- Garder `requireApp` (vérifie les permissions `peut_acces_prix`)
+- **Vérifier si `requireAdmin` est encore utilisé ailleurs**
+  - Si NON utilisé : supprimer la fonction
+  - Si encore utilisé : garder
+
+**Note** : Ne pas toucher aux fonctions liées aux tokens JWT (generateToken, verifyToken) qui sont utilisées pour l'authentification SSO.
+
+## ✅ FICHIERS À CONSERVER (NE PAS TOUCHER)
+
+**Authentication** :
+- `server/routes/auth.ts` — Routes SSO (/sso/login, /api/auth/me, etc.)
+- `server/middleware/auth.ts` — Fonctions d'authentification (requireAuth, verifyToken, generateToken)
+- `client/src/pages/login.tsx` — Page de login local (fallback)
+
+**Métier** (fonctionnalités principales) :
+- `client/src/pages/dashboard.tsx`
+- `client/src/pages/produits.tsx`
+- `client/src/pages/fournisseurs.tsx`
+- `client/src/pages/categories.tsx`
+- `client/src/pages/historique.tsx`
+- Toutes les routes API métier (produits, fournisseurs, prix, etc.)
+
+**Utilitaires** :
+- `server/utils/password-crypto.ts` — Peut être conservé si utilisé ailleurs, ou supprimé si uniquement utilisé pour la gestion utilisateurs (à vérifier)
+
+## ⚠️ POINTS DE VIGILANCE
+
+1. **Ne pas casser l'authentification** :
+   - L'app doit toujours vérifier la session via le portail Auth
+   - Le flow SSO (`/sso/login`) doit rester fonctionnel
+   - Le middleware `requireAuth` doit continuer à protéger les routes métier
+
+2. **Vérifier les permissions** :
+   - Les utilisateurs doivent toujours avoir `peut_acces_prix = true` pour accéder
+   - Le middleware `requireApp` (ou équivalent) doit rester actif
+
+3. **Navigation** :
+   - Après suppression du lien, vérifier que la sidebar s'affiche correctement
+   - Pas d'erreur console liée à des routes manquantes
+
+4. **Routes API** :
+   - Tester que les routes métier fonctionnent toujours après nettoyage
+   - Pas de dépendance cassée vers `routes/users.ts`
+
+5. **Page 404** :
+   - Si quelqu'un essaie d'accéder à `/users` directement, gérer proprement (redirect ou 404)
+
+## 🧪 TESTS À RÉALISER APRÈS NETTOYAGE
+
+**Navigation** :
+- [ ] Le lien "Gestion utilisateurs" n'apparaît plus dans la sidebar
+- [ ] Tous les autres liens fonctionnent normalement
+
+**Routes métier** :
+- [ ] `/` → Dashboard accessible
+- [ ] `/produits` → Gestion produits accessible
+- [ ] `/fournisseurs` → Gestion fournisseurs accessible
+- [ ] `/categories` → Gestion catégories accessible
+- [ ] `/historique` → Historique prix accessible
+
+**Authentification** :
+- [ ] Accès direct sans session → redirection vers portail Auth
+- [ ] Connexion via portail Auth → accès OK
+- [ ] Bouton déconnexion fonctionne
+
+**API métier** :
+- [ ] POST /api/produits → fonctionne
+- [ ] GET /api/fournisseurs → fonctionne
+- [ ] PATCH /api/prix/:id → fonctionne
+- [ ] (etc. pour toutes les routes métier)
+
+**Routes supprimées** :
+- [ ] GET /api/users → 404 ou erreur propre
+- [ ] POST /api/users → 404 ou erreur propre
+- [ ] Accès à `/users` en frontend → 404 ou redirect
+
+**Pas d'erreurs console** :
+- [ ] Pas d'import manquant
+- [ ] Pas de référence à un composant supprimé
+- [ ] Pas d'erreur dans le build
+
+## 📝 CHECKLIST DE NETTOYAGE
+
+**Suppressions** :
+- [ ] Fichier `client/src/pages/users.tsx` supprimé
+- [ ] Fichier `server/routes/users.ts` supprimé
+- [ ] Lien "Gestion utilisateurs" retiré de la sidebar
+- [ ] Route `/users` retirée du router frontend
+- [ ] Import et usage de `routes/users` retiré de `server/routes.ts`
+- [ ] Middleware `requireAdmin` supprimé si non utilisé ailleurs
+
+**Vérifications** :
+- [ ] Build frontend réussit sans erreur
+- [ ] Build backend réussit sans erreur
+- [ ] Toutes les routes métier fonctionnent
+- [ ] Authentification SSO fonctionne
+- [ ] Aucune régression sur les fonctionnalités métier
+
+**Documentation** :
+- [ ] README mis à jour si nécessaire (retirer mention de la gestion utilisateurs)
+- [ ] Commentaires de code nettoyés si référence à la gestion utilisateurs
+
+## 🎯 RÉSULTAT ATTENDU
+
+**Après ce nettoyage, l'app Produits** :
+- ✅ N'a plus aucune interface de gestion des utilisateurs
+- ✅ Ne peut plus modifier les utilisateurs en base
+- ✅ Vérifie toujours l'authentification et les permissions (lecture seule)
+- ✅ Toutes les fonctionnalités métier (produits, prix, fournisseurs) fonctionnent normalement
+- ✅ Code plus simple et maintenable (une seule responsabilité)
+
+**Pour gérer les utilisateurs** : Aller sur le portail Auth → Gestion Utilisateurs (Michael et Marine uniquement)
+
+---
+
+**DISCLAIMER** : Ce brief suppose que la structure des fichiers est exactement comme décrite dans nos échanges précédents. Si tu détectes des incohérences (fichiers à des emplacements différents, noms différents, dépendances cachées), challenge-moi et on ajustera.

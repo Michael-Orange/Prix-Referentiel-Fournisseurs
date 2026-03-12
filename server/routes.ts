@@ -8,7 +8,6 @@ import { z } from "zod";
 import jwt from "jsonwebtoken";
 import { requireAuth, requireAdmin, requireApp, verifyToken, generateToken } from "./middleware/auth";
 import authRoutes from "./routes/auth";
-import usersRoutes from "./routes/users";
 import { db } from "./db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -21,7 +20,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.use(cookieParser());
 
   app.use("/api/auth", authRoutes);
-  app.use("/api/admin/users", usersRoutes);
 
   const AUTH_PORTAL_URL = "https://auth.filtreplante.com";
   const JWT_SECRET = process.env.JWT_SECRET || "fallback-jwt";

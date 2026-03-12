@@ -54,8 +54,6 @@ Preferred communication style: Simple, everyday language.
 │       ├── hooks/       # Custom React hooks (use-toast, use-mobile)
 │       └── lib/         # Utilities (queryClient, utils)
 ├── server/              # Express backend
-│   ├── auth/
-│   │   └── users.ts     # Parse AUTH_PASSWORDS secret, DB user lookup & password verify
 │   ├── routes.ts        # API routes with scope-based middleware
 │   ├── storage.ts       # Data access layer (IStorage interface)
 │   ├── seed.ts          # Database seeding (338 products from CSV)
@@ -71,11 +69,10 @@ Preferred communication style: Simple, everyday language.
 - Login via username dropdown + password at `/api/auth/login`
 - Users stored in `referentiel.users` table with AES-encrypted passwords (reversible for admin visibility)
 - 4 users seeded at startup: Michael (admin, all access), Cheikh (user, stock only), Fatou (user, all access), Marine (user, all access)
-- Roles: admin (full access, user management), user (access per permissions)
+- Roles: admin (full access), user (access per permissions)
 - Per-app permissions: `peut_acces_stock` (Stock app), `peut_acces_prix` (Prix app) enforced via `requireApp()` middleware
 - Routes use `requireAuth` + `requireApp("prix"|"stock")` middleware chain
-- Admin pages protected by `requireAdmin` middleware
-- Admin user management page at `/utilisateurs` (create/edit/toggle users, password visibility)
+- User management centralized in Auth portal (https://auth.filtreplante.com)
 
 ### API Endpoints
 - `POST /api/auth/login` - Login with username/password, returns JWT cookie
@@ -91,9 +88,6 @@ Preferred communication style: Simple, everyday language.
 - `PATCH /api/prix/fournisseurs/:id` - Update price (triggers history, requireApp "prix")
 - `PATCH /api/prix/fournisseurs/:id/defaut` - Set default supplier (requireApp "prix")
 - `GET /api/prix/fournisseurs/:id/historique` - Price change history (requireApp "prix")
-- `GET/POST /api/admin/users` - Admin user management (requireAdmin)
-- `PATCH /api/admin/users/:id` - Update user (requireAdmin)
-- `GET /api/admin/users/:id/password` - Reveal decrypted password (requireAdmin)
 - `GET /api/auth/sso-token` - Generate 30s SSO token for Stock app redirect (requireAuth + stock access check)
 - `GET /sso/login?token=XXX` - SSO login from Auth portal: verify JWT (type=sso), create local session, redirect to /
 
