@@ -6,7 +6,7 @@ import { resetAndReseed } from "./seed";
 import { insertFournisseurSchema, insertProduitMasterSchema, REGIMES_FISCAUX } from "@shared/schema";
 import { z } from "zod";
 import jwt from "jsonwebtoken";
-import { requireAuth, requireAdmin, requireApp, verifyToken, generateToken } from "./middleware/auth";
+import { requireAuth, requireAdmin, requireApp, generateToken } from "./middleware/auth";
 import authRoutes from "./routes/auth";
 import { db } from "./db";
 import { users } from "@shared/schema";

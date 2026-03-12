@@ -2,7 +2,7 @@
 
 ## Overview
 
-Centralized multi-app PostgreSQL system for Filtreplante (Senegal). Manages products, suppliers, categories, and pricing in FCFA using two PostgreSQL schemas: `referentiel` (shared product data) and `prix` (supplier pricing). Supports three Senegalese fiscal regimes (TVA 18%, Sans TVA, BRS 5%), intelligent duplicate detection via pg_trgm trigrams, automatic price calculations, price history tracking via PostgreSQL trigger, JWT-based authentication with encrypted passwords, per-app permissions (Stock/Prix), and admin user management interface.
+Centralized multi-app PostgreSQL system for Filtreplante (Senegal). Manages products, suppliers, categories, and pricing in FCFA using two PostgreSQL schemas: `referentiel` (shared product data) and `prix` (supplier pricing). Supports three Senegalese fiscal regimes (TVA 18%, Sans TVA, BRS 5%), intelligent duplicate detection via pg_trgm trigrams, automatic price calculations, price history tracking via PostgreSQL trigger, JWT-based authentication via SSO with Auth portal, per-app permissions (Stock/Prix).
 
 ## User Preferences
 
@@ -125,15 +125,10 @@ BRS 5%:   prixTtc = null, prixBrs = prixHt / 0.95
 - **Unit display mapping**: Products with unite "Nb de tuyaux 6m" display as "ml"; Geotextile rouleau products display as "m²" (DB values unchanged for Stock app)
 
 ## Previous Changes (2026-02-21)
-- **JWT Authentication overhaul**: Replaced express-session/email auth with JWT tokens in HttpOnly cookies + username dropdown login
-  - New `referentiel.users` table with username, password_encrypted (AES), per-app permissions
-  - Middleware: requireAuth (JWT), requireAdmin, requireApp("prix"|"stock")
-  - server/middleware/auth.ts: JWT token generation/verification
-  - server/utils/password-crypto.ts: AES password encryption/decryption (reversible for admin)
-  - server/routes/auth.ts: login, logout, me, usernames endpoints
-  - server/routes/users.ts: admin CRUD for user management
+- **JWT Authentication**: JWT tokens in HttpOnly cookies + username dropdown login (local fallback)
+  - `referentiel.users` table with username, password_encrypted (AES), per-app permissions
+  - Middleware: requireAuth (JWT), requireApp("prix"|"stock")
   - 4 seeded users: michael (admin), cheikh (stock only), fatou (all), marine (all)
-- **Admin Users page**: /utilisateurs route (admin only) with user table, create/edit dialogs, password reveal, activate/deactivate toggle
 - **Per-app permissions enforcement**: Fournisseurs and prix endpoints require "prix" app access; reseed requires admin
 - **SSO to Stock app**: Sidebar "Gestion Stock" button (visible to users with stock access) generates a 30s JWT token and opens https://stock-filtreplante.replit.app/sso?token=xxx in new tab. Server-side authorization check enforces stock access. Stock app needs to implement /sso route to accept and validate the token.
 
